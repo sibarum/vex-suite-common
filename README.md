@@ -1,0 +1,46 @@
+# vex-suite-common
+
+What [Vexplore](../vexplore) and [Pix](../Pix) share: pictures decoded and packed for the GPU, the image viewer's
+tree and its parts, and the palette they are drawn in. A library, not an application; both apps depend on it, so a
+change here is a change to both.
+
+```
+mvn install        # build, test, and put it in the local Maven repository, before either app builds
+```
+
+Needs the VexelRay stack and `imagelib-wrapper` in the local repository first, as the apps do.
+
+## What is here
+
+```
+Lru                 a cache bounded by weight, least recently used out first.
+
+pictures/           pixels, and nothing else. No GUI. Blocking: callers run these on Gui.offload().
+  Pictures          a file's picture through imagelib (PNG, JPEG, GIF, WebP, SVG and the rest, animated where the
+                    file is), at the thumbnail's size and, from the same decode, the viewer's. A failure is a reason.
+  Decoded           what Pictures returns: what the file is, and its picture at one or two sizes, or why not.
+  Picture           a decoded image, every frame packed into one RGBA8 sheet, scaled down and never up.
+  Stamp             which version of a file: the cache key.
+
+view/               the viewer and its parts, on vexelray-gui.
+  PictureViewer     the whole viewer tree: the picture, and a bar under it of Close, Previous, the filmstrip, Next,
+                    Background and Keep shown, which fades when the pointer rests. Told what to show (Showing); tells
+                    the application what the user did (Host). Vexplore shows it in a second window, Pix as its whole
+                    window.
+  ImageView         one picture, fitted, animated, sliding in from the side it came from, over a backdrop.
+  Filmstrip         the neighbours' thumbnails, gliding one square along on a step.
+  Tile, Icons       the viewer's controls: one square size, an icon over a word.
+  Textures          pictures on the GPU: uploaded once, recent ones kept, the rest handed to GuiApp.release.
+  SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
+  SuiteType         the faces and sizes the parts above draw with.
+```
+
+What stays in each application is what is different about it: Vexplore's viewer is a second window that steps by
+moving the explorer's selection, and its dock's preview ladder has text and bytes below the picture; Pix's is the
+main window over a document of its own (a folder, its images, the one shown).
+
+## Landmarks
+
+`PictureViewer` names its parts for automation scripts with a prefix the application chooses: `name`, `info`,
+`count`, `close`, `previous`, `next`, `background`, `keep`, `backdrop.dark` and the other backdrops. Pix uses no
+prefix; Vexplore uses `viewer.`, and its viewer is reached with `ottermate --window viewer`.
