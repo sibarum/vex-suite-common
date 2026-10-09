@@ -44,3 +44,15 @@ main window over a document of its own (a folder, its images, the one shown).
 `PictureViewer` names its parts for automation scripts with a prefix the application chooses: `name`, `info`,
 `count`, `close`, `previous`, `next`, `background`, `keep`, `backdrop.dark` and the other backdrops. Pix uses no
 prefix; Vexplore uses `viewer.`, and its viewer is reached with `ottermate --window viewer`.
+
+## Application icons
+
+The suite's icons are drawn on the design canvas; each application keeps its SVGs in `src/main/rc/` and links an
+`.ico` into its executable. `tools/Ico.java` renders one SVG at every size Windows asks for (16 to 256 px, each from
+the vector) and packs them, as PNGs, into an `.ico`. It is not part of the build; run it when an icon changes:
+
+```
+java --enable-native-access=ALL-UNNAMED \
+     -cp ~/.m2/repository/sibarum/imagelib/imagelib-wrapper/0.1.0-SNAPSHOT/imagelib-wrapper-0.1.0-SNAPSHOT.jar \
+     tools/Ico.java ../Pix/src/main/rc/pix.svg ../Pix/src/main/rc/pix.ico
+```
