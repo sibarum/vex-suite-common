@@ -45,7 +45,8 @@ import java.util.function.Function;
  * and never blanks while the application reads only where the key stops.
  *
  * <p><b>Every control is a {@link Tile}</b>: one size, an icon over a word. They sit in one bar under the picture, in
- * three groups: what this is and Close on the left, moving through the folder in the middle (Previous, the
+ * three groups: what this is, Close and (when the host {@link Host#opens opens}) Open on the left, moving through the
+ * folder in the middle (Previous, the
  * {@link Filmstrip}, Next), and how it is shown on the right (Background, Keep shown).
  *
  * <p><b>The picture is never covered, and never moves.</b> The bar has its own room under the picture. When the
@@ -60,7 +61,7 @@ import java.util.function.Function;
  * decoded while its window is still being made.
  *
  * <p>Landmarks, each with the prefix given to the constructor: {@link #NAME}, {@link #INFO}, {@link #COUNT} (written at
- * once on every step, so scripts await them), the tiles {@link #CLOSE}, {@link #PREVIOUS}, {@link #NEXT},
+ * once on every step, so scripts await them), the tiles {@link #CLOSE}, {@link #OPEN}, {@link #PREVIOUS}, {@link #NEXT},
  * {@link #BACKGROUND}, {@link #KEEP}, and the backdrop swatches {@link #BACKDROP}{@code checker} and so on.
  */
 public final class PictureViewer {
@@ -76,6 +77,19 @@ public final class PictureViewer {
 
         /** Close the viewer: the Close tile, or Escape with no menu open. */
         void close();
+
+        /**
+         * Whether the viewer offers to open something else: an Open tile beside Close, and the words beside them
+         * clickable. Asked once, when the viewer is built. No by default: Vexplore's viewer shows what its explorer
+         * chose.
+         */
+        default boolean opens() {
+            return false;
+        }
+
+        /** Open something else: the Open tile, or a click on the words. Only called when {@link #opens}. */
+        default void open() {
+        }
     }
 
     /**
@@ -99,6 +113,7 @@ public final class PictureViewer {
     public static final String INFO = "info";
     public static final String COUNT = "count";
     public static final String CLOSE = "close";
+    public static final String OPEN = "open";
     public static final String PREVIOUS = "previous";
     public static final String NEXT = "next";
     public static final String BACKGROUND = "background";
@@ -192,7 +207,14 @@ public final class PictureViewer {
         Node words = gui.column().width(TITLE_W).height(Length.AUTO).gap(Length.rem(0.375f))
                 .padding(Length.ZERO, Length.rem(0.375f)).clip(true).scroll(false, false)
                 .children(name, info, count);
-        this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
+        this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node());
+        if (host.opens()) {
+            Tile open = Tile.of(gui, Icons.FOLDER, "Open").onPress(host::open);
+            gui.landmark(landmarks + OPEN, open.node());
+            title.append(open.node());
+            gui.onClick(words, host::open);
+        }
+        title.append(words);
         Node browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
         this.tools = slab(gui.row()).alignItems(AlignItems.CENTER).children(background.node(), keep.node());
 

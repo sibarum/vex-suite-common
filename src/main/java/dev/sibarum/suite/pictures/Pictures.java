@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -50,6 +51,11 @@ public final class Pictures {
     private static volatile boolean decoderReported;
 
     private Pictures() {
+    }
+
+    /** The extensions {@link #named} lists, without the dot, in order: an open dialog's filter. */
+    public static List<String> extensions() {
+        return EXTENSIONS.stream().sorted().toList();
     }
 
     /** Whether {@code path} is named like an image this decodes: what a folder of pictures is listed for. */

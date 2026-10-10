@@ -23,7 +23,8 @@ pictures/           pixels, and nothing else. No GUI. Blocking: callers run thes
   Stamp             which version of a file: the cache key.
 
 view/               the viewer and its parts, on vexelray-gui.
-  PictureViewer     the whole viewer tree: the picture, and a bar under it of Close, Previous, the filmstrip, Next,
+  PictureViewer     the whole viewer tree: the picture, and a bar under it of Close (and Open, when the host
+                    opens), Previous, the filmstrip, Next,
                     Background and Keep shown, which fades when the pointer rests. Told what to show (Showing); tells
                     the application what the user did (Host). Vexplore shows it in a second window, Pix as its whole
                     window.
@@ -42,7 +43,7 @@ main window over a document of its own (a folder, its images, the one shown).
 ## Landmarks
 
 `PictureViewer` names its parts for automation scripts with a prefix the application chooses: `name`, `info`,
-`count`, `close`, `previous`, `next`, `background`, `keep`, `backdrop.dark` and the other backdrops. Pix uses no
+`count`, `close`, `open`, `previous`, `next`, `background`, `keep`, `backdrop.dark` and the other backdrops. Pix uses no
 prefix; Vexplore uses `viewer.`, and its viewer is reached with `ottermate --window viewer`.
 
 ## Application icons

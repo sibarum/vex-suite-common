@@ -29,6 +29,13 @@ public enum Icons {
             p.poly(9.5, 5, 16, 12, 9.5, 19);
         }
     },
+    /** A folder: open another picture, or another folder of them. */
+    FOLDER {
+        @Override
+        void draw(Pen p) {
+            p.poly(3.5, 18.5, 3.5, 5.5, 9.5, 5.5, 11.5, 8, 20.5, 8, 20.5, 18.5, 3.5, 18.5);
+        }
+    },
     /** A square, half of it filled: what shows behind the picture. */
     BACKGROUND {
         @Override
