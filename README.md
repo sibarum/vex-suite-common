@@ -1,7 +1,7 @@
 # vex-suite-common
 
 What [Vexplore](../vexplore) and [Pix](../Pix) share: the sizes pictures are decoded at, the image viewer's
-tree and its parts, and the palette they are drawn in. A library, not an application; both apps depend on it, so a
+tree and its parts, the palette they are drawn in, and git's view of a folder. A library, not an application; both apps depend on it, so a
 change here is a change to both.
 
 ```
@@ -20,6 +20,14 @@ the `Textures` and binds them to the window. What is here is what is particular 
 ```
 pictures/
   Sizes             the two sizes the suite decodes at: a thumbnail's, and the viewer's from the same decode.
+
+git/                the git executable, run as a process. No GUI. Blocking: callers run these on Gui.offload().
+  Git               runs git with pipes, never taking a lock or prompting; a run is a Result (command, exit,
+                    output) kept whole for whatever shows the user what git did. No git installed is not an error:
+                    status() is empty, as it is outside a repository.
+  Status            a working tree's state: the branch, every path that is not clean, and the two questions a file
+                    list asks of it, at(file) and inside(folder). Case-blind where the platform is.
+  Porcelain         reads `git status --porcelain=v2 -z --branch`. Pure, so it is tested without git.
 
 view/               the viewer and its parts, on vexelray-gui.
   PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
