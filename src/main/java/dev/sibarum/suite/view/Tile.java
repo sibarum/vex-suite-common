@@ -16,8 +16,8 @@ import dev.vexelray.gui.core.style.Theme;
 import sibarum.tactroller.api.Key;
 
 /**
- * One of the viewer's controls: a square of one size for every control, an icon over a word that says what it does.
- * Nothing is icon-only, so nothing has to be learned or hovered to be understood.
+ * One of the viewer's controls: a square of one size for every control, an icon alone. The word that says what it
+ * does is its accessible name, read by scripts and screen readers, and not drawn: the icons say it to the eye.
  *
  * <p><b>Why not {@code Button}.</b> {@code Button} is one text node and takes no icon or content of its own, so this is
  * {@code Popout.button}'s recipe with {@code Button}'s keyboard: a column that claims Enter and Space while focused,
@@ -30,11 +30,12 @@ import sibarum.tactroller.api.Key;
 public final class Tile {
 
     /** Every tile, a thumbnail included, is this square: 72 px at the design's size. */
-    public static final Length SIDE = Length.rem(4.5f);
+    public static final float SIDE_REM = 4.5f;
+    public static final Length SIDE = Length.rem(SIDE_REM);
     public static final Length CORNER = Length.rem(1.125f);
     /** Between tiles, and around them inside a slab. */
     public static final Length GAP = Length.rem(0.5f);
-    private static final Length GLYPH = Length.rem(1.625f);
+    private static final Length GLYPH = Length.rem(2f);
 
     /**
      * How much of a tile's fill is drawn: the picture and the backdrop show through it. Only the fill: the edge, the
@@ -50,7 +51,7 @@ public final class Tile {
     private final Node node;
     private final Node glyph;
     private final Node label;
-    private final Icons icon;
+    private volatile Icons icon;
 
     private volatile boolean enabled = true;
     private volatile boolean on;
@@ -62,9 +63,10 @@ public final class Tile {
         this.gui = gui;
         this.icon = icon;
         this.glyph = glyph.hitInert(true);
-        this.label = gui.text(word).font(SuiteType.UI).textSize(SuiteType.SMALL).wordWrap(false).hitInert(true);
+        this.label = gui.text(word).font(SuiteType.UI).textSize(SuiteType.SMALL).wordWrap(false).hitInert(true)
+                .visible(false);
         this.node = gui.column().role("button").size(SIDE, SIDE).corner(CORNER).scroll(false, false)
-                .justify(Justify.CENTER).alignItems(AlignItems.CENTER).gap(Length.rem(0.4375f))
+                .justify(Justify.CENTER).alignItems(AlignItems.CENTER)
                 .children(this.glyph, label);
         gui.focusable(node, true);
         gui.cursor(node, CursorShape.POINTER);
@@ -84,12 +86,12 @@ public final class Tile {
         paint();
     }
 
-    /** A tile showing {@code icon} over {@code word}. */
+    /** A tile showing {@code icon}, named {@code word}. */
     public static Tile of(Gui gui, Icons icon, String word) {
         return new Tile(gui, icon, gui.box().size(GLYPH, GLYPH), word);
     }
 
-    /** A tile showing a node of the caller's over {@code word}: a swatch, a reading. It is not recoloured. */
+    /** A tile showing a node of the caller's, named {@code word}: a swatch, a reading. It is not recoloured. */
     public static Tile of(Gui gui, Node glyph, String word) {
         return new Tile(gui, null, glyph, word);
     }
@@ -105,6 +107,13 @@ public final class Tile {
 
     public Tile onPress(Runnable handler) {
         onPress = handler == null ? () -> { } : handler;
+        return this;
+    }
+
+    /** Draw {@code value} in place of the icon: a state shown in the icon as well as the fill. Not for a node glyph. */
+    public Tile icon(Icons value) {
+        icon = value;
+        paint();
         return this;
     }
 

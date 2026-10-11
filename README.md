@@ -23,14 +23,14 @@ pictures/           pixels, and nothing else. No GUI. Blocking: callers run thes
   Stamp             which version of a file: the cache key.
 
 view/               the viewer and its parts, on vexelray-gui.
-  PictureViewer     the whole viewer tree: the picture, and a bar under it of Close (and Open, when the host
-                    opens), Previous, the filmstrip, Next,
-                    Background and Keep shown, which fades when the pointer rests. Told what to show (Showing); tells
+  PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
+                    opens), Previous, the filmstrip, Next, Background and Keep shown, which fades when the
+                    pointer rests, and when pinned takes room of its own. Told what to show (Showing); tells
                     the application what the user did (Host). Vexplore shows it in a second window, Pix as its whole
                     window.
   ImageView         one picture, fitted, animated, sliding in from the side it came from, over a backdrop.
   Filmstrip         the neighbours' thumbnails, gliding one square along on a step.
-  Tile, Icons       the viewer's controls: one square size, an icon over a word.
+  Tile, Icons       the viewer's controls: one square size, an icon alone, its word the accessible name.
   Textures          pictures on the GPU: uploaded once, recent ones kept, the rest handed to GuiApp.release.
   SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
   SuiteType         the faces and sizes the parts above draw with.

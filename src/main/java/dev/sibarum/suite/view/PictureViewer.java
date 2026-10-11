@@ -48,17 +48,21 @@ import java.util.function.Function;
  * the picture already up where it is, under the new name and count, so holding an arrow key moves the counter at once
  * and never blanks while the application reads only where the key stops.
  *
- * <p><b>Every control is a {@link Tile}</b>: one size, an icon over a word. They sit in one bar under the picture, in
- * three groups: Close and what this is on the left, moving through the folder in the middle (Previous, the
+ * <p><b>Every control is a {@link Tile}</b>: one size, an icon alone. They sit in one bar along the bottom, in three
+ * groups: Close and what this is on the left, moving through the folder in the middle (Previous, the
  * {@link Filmstrip}, Next), and how it is shown on the right (Background, Keep shown). When the host
  * {@link Host#opens opens}, the words that say what this is are its Open button, shaded on hover like a tile, and say
  * {@value #PROMPT} while nothing is open.
  *
- * <p><b>The picture is never covered, and never moves.</b> The bar has its own room under the picture. When the
- * pointer rests the bar fades out but keeps that room, so the picture does not grow and shrink as the mouse comes and
- * goes; moving the mouse, clicking or pressing Tab brings it back, and Keep shown stops it going. The one thing drawn
- * over the picture is the backdrop menu, which the user opens and which closes on a choice, a second press, a click on
- * the picture, or Escape.
+ * <p><b>A narrow window keeps what fits</b> ({@link #fit}). With no room for a thumbnail between Previous and Next,
+ * the two move out of the bar to the window's left and right edges; with no room for both side groups, Background and
+ * Keep shown go, and then Close and the words. Nothing is ever drawn overlapping or cut off.
+ *
+ * <p><b>The picture has the whole window</b> under the title bar, and the controls float over it: when the pointer
+ * rests they fade, after {@link #IDLE_MS}, and moving the mouse, clicking or pressing Tab brings them back. <b>Keep
+ * shown</b> pins them: they stop fading, the pin stands upright on the chosen fill, and they take room of their own,
+ * the picture shrinking to the rest so that no control covers any of it. The backdrop menu is drawn over the picture
+ * either way; it closes on a choice, a second press, a click on the picture, or Escape.
  *
  * <p><b>Active only while shown.</b> The idle fade runs, and a picture is uploaded, only between {@link #active
  * active(true)} and {@code active(false)}: the window it is in is up, and its {@link Textures} are bound. A picture
@@ -124,13 +128,22 @@ public final class PictureViewer {
     public static final String KEEP = "keep";
     public static final String BACKDROP = "backdrop.";
 
-    /** How long the pointer rests before the bar fades, and how long the fade takes. */
-    public static final int IDLE_MS = 2500;
+    /** How long the pointer rests before the controls fade, and how long the fade takes. */
+    public static final int IDLE_MS = 1200;
     private static final int FADE_MS = 240;
 
     private static final Length SLAB_CORNER = Length.rem(1.625f);
     /** The title's text column is this wide and clips, so a long name never pushes the filmstrip aside. */
-    private static final Length TITLE_W = Length.rem(10f);
+    private static final float TITLE_REM = 10f;
+    private static final Length TITLE_W = Length.rem(TITLE_REM);
+    /** Wider than any name the title has room for: one line, cut off at the column's edge. */
+    private static final Length LINE_W = Length.rem(60f);
+    /** Between the window's edges and the controls along them. */
+    private static final Length MARGIN = Length.rem(1f);
+    /** The room Previous or Next takes at the window's side when the controls are pinned: the tile and its margins. */
+    private static final Length SIDE_ROOM = Length.rem(Tile.SIDE_REM + 2f);
+    /** How far up the backdrop menu sits while the bar floats, so it opens above the bar and not over it. */
+    private static final Length BAR_ROOM = Length.rem(Tile.SIDE_REM + 1.75f);
     private static final Length SWATCH = Length.rem(1.75f);
     private static final Length WORDS_CORNER = Length.rem(0.75f);
     /** What the words say, as the Open button, while nothing is open. */
@@ -157,8 +170,16 @@ public final class PictureViewer {
     private final Filmstrip strip;
     private final Node controls;
     private final Node title;
+    private final Node browse;
     private final Node tools;
+    /** Where Previous and Next go when the bar has no room for them: the window's left and right edges. */
+    private final Node leftSide;
+    private final Node rightSide;
+    /** Everything that fades: the bar, and the two sides. */
+    private final List<Node> chrome;
+    private final Node stage;
     private final Node menu;
+    private final Node menuLift;
     private final Map<Backdrop, Tile> swatches = new EnumMap<>(Backdrop.class);
 
     /** The window's box, for drawing the checkerboard across it, and the size it was last drawn at. */
@@ -177,9 +198,15 @@ public final class PictureViewer {
     private volatile boolean hidden;
     private volatile boolean keepShown;
     private volatile boolean menuOpen;
-    private volatile boolean overBar;
+    /** Which of {@link #chrome} the pointer is on, a bit each: none fades from under the pointer. */
+    private final AtomicInteger over = new AtomicInteger();
     private final AtomicInteger fade = new AtomicInteger();
     private Scheduled idle;
+
+    /** What {@link #fit} last decided, and the tile size it was measured from. Layout callbacks only. */
+    private boolean arrowsInBar = true;
+    private boolean arrowsAtSides;
+    private float tilePx;
 
     /**
      * Build the viewer into {@code gui}'s root, under {@code bar}, which it places and titles.
@@ -198,6 +225,10 @@ public final class PictureViewer {
         this.name = text("", SuiteType.BODY, Role.INK, SuiteType.UI);
         this.info = text("", SuiteType.SMALL, SuiteLook.TEXT, SuiteType.MONO);
         this.count = text("", SuiteType.META, SuiteLook.TEXT, SuiteType.UI);
+        // Static text wraps at its own width, so each line is given more than the column, which clips it.
+        for (Node line : List.of(name, info, count)) {
+            line.width(LINE_W);
+        }
         gui.landmark(landmarks + NAME, name);
         gui.landmark(landmarks + INFO, info);
         gui.landmark(landmarks + COUNT, count);
@@ -223,17 +254,23 @@ public final class PictureViewer {
             button(words, host::open);
         }
         this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
-        Node browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
+        this.browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
         this.tools = slab(gui.row()).alignItems(AlignItems.CENTER).children(background.node(), keep.node());
 
         Node left = gui.row().width(Length.grow(1f)).height(Length.AUTO).scroll(false, false).children(title);
         Node right = gui.row().width(Length.grow(1f)).height(Length.AUTO).justify(Justify.END).scroll(false, false)
                 .children(tools);
-        this.controls = gui.row().width(Length.FILL).height(Length.AUTO).alignItems(AlignItems.CENTER)
-                .padding(Length.ZERO, Length.rem(1f)).gap(Length.rem(1f)).scroll(false, false)
+        this.controls = gui.row().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
+                .padding(Length.rem(0.75f), MARGIN).gap(MARGIN).scroll(false, false)
                 .children(left, browse, right);
-        gui.onResize(controls, this::fitStrip);
-        gui.onState(controls, s -> overBar = s != InteractionState.NORMAL);
+        gui.onResize(controls, this::refit);
+        this.leftSide = side(Length.ZERO);
+        this.rightSide = side(Length.percent(100f));
+        this.chrome = List.of(controls, leftSide, rightSide);
+        for (int i = 0; i < chrome.size(); i++) {
+            int bit = 1 << i;
+            gui.onState(chrome.get(i), s -> over.getAndUpdate(o -> s == InteractionState.NORMAL ? o & ~bit : o | bit));
+        }
 
         Node choices = gui.row().height(Length.AUTO).gap(Tile.GAP).scroll(false, false);
         for (Backdrop b : Backdrop.values()) {
@@ -246,15 +283,17 @@ public final class PictureViewer {
             choices.append(t.node());
         }
         Node caption = text("BACKGROUND", SuiteType.SMALL, Role.DIM, SuiteType.UI);
-        this.menu = gui.column().height(Length.AUTO).padding(Length.rem(1f)).scroll(false, false)
+        this.menuLift = gui.box().size(Length.dp(1), BAR_ROOM);
+        this.menu = gui.column().height(Length.AUTO).padding(MARGIN).alignItems(AlignItems.END).scroll(false, false)
                 .floatAt(Length.percent(100f), Length.percent(100f)).visible(false)
-                .children(slab(gui.column()).alignItems(AlignItems.CENTER).children(caption, choices));
+                .children(slab(gui.column()).alignItems(AlignItems.CENTER).children(caption, choices), menuLift);
 
-        this.image = new ImageView(gui, krono, textures, Length.rem(1f), Length.rem(1f)).bare();
+        this.image = new ImageView(gui, krono, textures, Length.ZERO, Length.ZERO).bare();
         gui.onClick(image.node(), this::closeMenu);
-        Node stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
-                .children(image.node(), menu);
+        this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
+                .children(image.node(), leftSide, rightSide, menu);
         gui.root().direction(Direction.COLUMN).children(bar.node(), stage, controls);
+        dock();
         gui.onResize(gui.root(), box -> {
             windowBox = box;
             paintBackdrop();
@@ -402,14 +441,94 @@ public final class PictureViewer {
         return room <= 0f ? 0 : (int) (room / (tile + gap));
     }
 
-    private void fitStrip(NodeLayout box) {
-        float tile = prev.node().layout().rect().w();
-        if (!box.present() || tile <= 0f) {
+    /**
+     * What the bar shows at a width.
+     *
+     * @param thumbnails  how many the filmstrip shows
+     * @param arrowsInBar Previous and Next in the bar, either side of the filmstrip; otherwise at the window's sides
+     * @param sides       whether they are shown at the window's sides
+     * @param title       Close and the words
+     * @param tools       Background and Keep shown
+     */
+    record Fit(int thumbnails, boolean arrowsInBar, boolean sides, boolean title, boolean tools) {
+    }
+
+    /**
+     * What fits a bar {@code width} px across inside its margins, its tiles {@code tile} px square. The middle group
+     * comes first while it has room for a thumbnail; then Previous and Next go to the window's sides, and the two side
+     * groups share the bar, until they do not fit side by side, when Background and Keep shown go, and then the rest.
+     */
+    static Fit fit(float width, float tile) {
+        float gap = tile / 9f;
+        float barGap = 2f * gap;
+        // Each slab: its tiles, its padding and a gap between each two, and its 1 px edges.
+        float title = tile + tile * TITLE_REM / Tile.SIDE_REM + 3f * gap + 2f;
+        float tools = 2f * tile + 3f * gap + 2f;
+        int n = thumbnails(width, Math.max(title, tools), tile, gap, barGap);
+        if (n > 0) {
+            return new Fit(n, true, false, true, true);
+        }
+        boolean sides = width >= 3f * tile;
+        if (Math.max(title, tools) <= (width - barGap) / 2f) {
+            return new Fit(0, false, sides, true, true);
+        }
+        return new Fit(0, false, sides, title <= width, false);
+    }
+
+    /** Apply {@link #fit} to the bar's new box. */
+    private void refit(NodeLayout box) {
+        for (Tile t : List.of(prev, next, keep, background)) {
+            float w = t.node().layout().rect().w();
+            if (w > 0f) {
+                tilePx = w;
+                break;
+            }
+        }
+        if (!box.present() || tilePx <= 0f) {
             return;
         }
-        float side = Math.max(title.layout().rect().w(), tools.layout().rect().w());
-        float gap = tile / 9f;
-        strip.fit(thumbnails(box.content().w(), side, tile, gap, 2f * gap));
+        Fit f = fit(box.content().w(), tilePx);
+        strip.fit(f.thumbnails());
+        if (f.arrowsInBar() != arrowsInBar) {
+            arrowsInBar = f.arrowsInBar();
+            if (arrowsInBar) {
+                browse.insert(prev.node(), 0);
+                browse.append(next.node());
+            } else {
+                leftSide.append(prev.node());
+                rightSide.append(next.node());
+            }
+        }
+        browse.visible(f.arrowsInBar());
+        title.visible(f.title());
+        tools.visible(f.tools());
+        leftSide.visible(f.sides());
+        rightSide.visible(f.sides());
+        if (f.sides() != arrowsAtSides) {
+            arrowsAtSides = f.sides();
+            dock();
+        }
+    }
+
+    /** A column down one side of the picture, Previous or Next centred in it, floating {@code x} across. */
+    private Node side(Length x) {
+        return gui.column().width(Length.AUTO).height(Length.percent(100f)).justify(Justify.CENTER)
+                .padding(Length.ZERO, MARGIN).scroll(false, false).floatAt(x, Length.ZERO).visible(false);
+    }
+
+    /**
+     * Float the controls over the picture, or, pinned, give them room of their own: the bar its height under the
+     * picture and, when Previous and Next are at the sides, those their width either side of it.
+     */
+    private void dock() {
+        boolean pinned = keepShown;
+        if (pinned) {
+            controls.unfloat();
+        } else {
+            controls.floatAt(Length.ZERO, Length.percent(100f));
+        }
+        stage.padding(Length.ZERO, pinned && arrowsAtSides ? SIDE_ROOM : Length.ZERO);
+        menuLift.visible(!pinned);
     }
 
     // ---------------------------------------------------------------- background
@@ -484,7 +603,8 @@ public final class PictureViewer {
 
     private void toggleKeep() {
         keepShown = !keepShown;
-        keep.on(keepShown);
+        keep.icon(keepShown ? Icons.PINNED : Icons.PIN).on(keepShown);
+        dock();
         stir();
     }
 
@@ -519,15 +639,15 @@ public final class PictureViewer {
             arm(IDLE_MS - quiet);
             return;
         }
-        if (keepShown || menuOpen || overBar) {
+        if (keepShown || menuOpen || over.get() != 0) {
             return;
         }
         hidden = true;
         int g = fade.incrementAndGet();
-        controls.hitInert(true);
+        chrome.forEach(n -> n.hitInert(true));
         krono.ramp(Dur.ms(FADE_MS), Ease.LINEAR, p -> {
             if (fade.get() == g) {
-                controls.opacity((float) (1.0 - p));
+                chrome.forEach(n -> n.opacity((float) (1.0 - p)));
             }
         }, () -> { });
     }
@@ -535,7 +655,7 @@ public final class PictureViewer {
     private void reveal() {
         fade.incrementAndGet();
         hidden = false;
-        controls.opacity(1f).hitInert(false);
+        chrome.forEach(n -> n.opacity(1f).hitInert(false));
     }
 
     // ---------------------------------------------------------------- building

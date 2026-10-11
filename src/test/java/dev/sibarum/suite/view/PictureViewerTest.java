@@ -7,7 +7,9 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Where the viewer's steps land, which side a picture comes in from, and how much fits: all pure. */
 class PictureViewerTest {
@@ -70,5 +72,22 @@ class PictureViewerTest {
         assertEquals(7, PictureViewer.thumbnails(2 * side + 2 * 16f + middleFor7, side, tile, gap, 16f));
         assertEquals(6, PictureViewer.thumbnails(2 * side + 2 * 16f + middleFor7 - 1f, side, tile, gap, 16f));
         assertEquals(0, PictureViewer.thumbnails(500f, side, tile, gap, 16f), "no room: Previous and Next only");
+    }
+
+    @Test
+    void aNarrowBarKeepsWhatFits() {
+        // 72 px tiles: the title slab is 72 + 160 + 24 + 2 = 258 px, the tools slab 144 + 24 + 2 = 170 px.
+        PictureViewer.Fit wide = PictureViewer.fit(1400f, 72f);
+        assertTrue(wide.arrowsInBar() && wide.thumbnails() > 0 && wide.title() && wide.tools());
+        assertFalse(wide.sides());
+
+        PictureViewer.Fit noFilm = PictureViewer.fit(700f, 72f);
+        assertEquals(new PictureViewer.Fit(0, false, true, true, true), noFilm, "the arrows go to the sides");
+
+        PictureViewer.Fit narrow = PictureViewer.fit(400f, 72f);
+        assertEquals(new PictureViewer.Fit(0, false, true, true, false), narrow, "Background and Keep shown go first");
+
+        PictureViewer.Fit tiny = PictureViewer.fit(200f, 72f);
+        assertEquals(new PictureViewer.Fit(0, false, false, false, false), tiny, "and then everything");
     }
 }

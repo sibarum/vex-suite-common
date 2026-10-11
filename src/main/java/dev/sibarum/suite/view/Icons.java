@@ -44,14 +44,41 @@ public enum Icons {
             p.solid(6, 6, 6, 12, 1);
         }
     },
-    /** A push pin: the controls stay where they are. */
+    /** A push pin lying loose, tilted: the controls may fade. Pressing it pins them. */
     PIN {
         @Override
         void draw(Pen p) {
-            p.poly(9, 3.5, 15, 3.5, 14, 8.5, 17.5, 12, 6.5, 12, 10, 8.5, 9, 3.5);
-            p.line(12, 12, 12, 20.5);
+            p.poly(turn(PIN_HEAD));
+            p.poly(turn(PIN_NEEDLE));
+        }
+    },
+    /** The push pin upright and pushed in: the controls stay where they are. */
+    PINNED {
+        @Override
+        void draw(Pen p) {
+            p.poly(PIN_HEAD);
+            p.poly(PIN_NEEDLE);
+            p.line(7.5, 20.5, 16.5, 20.5);
         }
     };
+
+    private static final double[] PIN_HEAD = {9, 3.5, 15, 3.5, 14, 8.5, 17.5, 12, 6.5, 12, 10, 8.5, 9, 3.5};
+    private static final double[] PIN_NEEDLE = {12, 12, 12, 19};
+
+    /** {@code xy} pairs turned 40 degrees clockwise about the grid's centre. */
+    private static double[] turn(double[] xy) {
+        double a = Math.toRadians(40);
+        double c = Math.cos(a);
+        double s = Math.sin(a);
+        double[] out = new double[xy.length];
+        for (int i = 0; i < xy.length; i += 2) {
+            double x = xy[i] - GRID / 2;
+            double y = xy[i + 1] - GRID / 2;
+            out[i] = GRID / 2 + x * c - y * s;
+            out[i + 1] = GRID / 2 + x * s + y * c;
+        }
+        return out;
+    }
 
     /** The grid every icon is drawn on, and its stroke. */
     static final double GRID = 24;
