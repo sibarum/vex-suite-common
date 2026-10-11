@@ -5,8 +5,11 @@ import dev.sibarum.suite.view.ImageView.Backdrop;
 import dev.vexelray.canvas.Color;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
+import dev.vexelray.gui.core.input.ClaimScope;
+import dev.vexelray.gui.core.input.CursorShape;
 import dev.vexelray.gui.core.input.InputTopics;
 import dev.vexelray.gui.core.input.InteractionState;
+import dev.vexelray.gui.core.input.Shortcut;
 import dev.vexelray.gui.core.layout.LayoutEnums.AlignItems;
 import dev.vexelray.gui.core.layout.LayoutEnums.Direction;
 import dev.vexelray.gui.core.layout.LayoutEnums.Justify;
@@ -14,6 +17,7 @@ import dev.vexelray.gui.core.layout.Length;
 import dev.vexelray.gui.core.layout.NodeLayout;
 import dev.vexelray.gui.core.style.Relief;
 import dev.vexelray.gui.core.style.Role;
+import dev.vexelray.gui.core.style.Theme;
 import dev.vexelray.gui.krono.KronoGui;
 import dev.vexelray.gui.krono.Scheduled;
 import dev.vexelray.gui.widget.TitleBar;
@@ -45,9 +49,10 @@ import java.util.function.Function;
  * and never blanks while the application reads only where the key stops.
  *
  * <p><b>Every control is a {@link Tile}</b>: one size, an icon over a word. They sit in one bar under the picture, in
- * three groups: what this is, Close and (when the host {@link Host#opens opens}) Open on the left, moving through the
- * folder in the middle (Previous, the
- * {@link Filmstrip}, Next), and how it is shown on the right (Background, Keep shown).
+ * three groups: Close and what this is on the left, moving through the folder in the middle (Previous, the
+ * {@link Filmstrip}, Next), and how it is shown on the right (Background, Keep shown). When the host
+ * {@link Host#opens opens}, the words that say what this is are its Open button, shaded on hover like a tile, and say
+ * {@value #PROMPT} while nothing is open.
  *
  * <p><b>The picture is never covered, and never moves.</b> The bar has its own room under the picture. When the
  * pointer rests the bar fades out but keeps that room, so the picture does not grow and shrink as the mouse comes and
@@ -79,15 +84,14 @@ public final class PictureViewer {
         void close();
 
         /**
-         * Whether the viewer offers to open something else: an Open tile beside Close, and the words beside them
-         * clickable. Asked once, when the viewer is built. No by default: Vexplore's viewer shows what its explorer
+         * Whether the viewer offers to open something else: the words beside Close become a button. Asked once, when the viewer is built. No by default: Vexplore's viewer shows what its explorer
          * chose.
          */
         default boolean opens() {
             return false;
         }
 
-        /** Open something else: the Open tile, or a click on the words. Only called when {@link #opens}. */
+        /** Open something else: a click on the words, or Enter or Space on them. Only called when {@link #opens}. */
         default void open() {
         }
     }
@@ -128,6 +132,11 @@ public final class PictureViewer {
     /** The title's text column is this wide and clips, so a long name never pushes the filmstrip aside. */
     private static final Length TITLE_W = Length.rem(10f);
     private static final Length SWATCH = Length.rem(1.75f);
+    private static final Length WORDS_CORNER = Length.rem(0.75f);
+    /** What the words say, as the Open button, while nothing is open. */
+    public static final String PROMPT = "Open a picture…";
+    private static final Shortcut ENTER = Shortcut.of(Key.ENTER);
+    private static final Shortcut SPACE = Shortcut.of(Key.SPACE);
     /** How much of a panel's fill is drawn. Its tiles are see-through too ({@link Tile#GLASS}), so together they cover
      *  about four fifths: the picture shows behind the controls and the words on them stay legible. */
     static final float PANEL_ALPHA = 0.5f;
@@ -135,6 +144,7 @@ public final class PictureViewer {
     private final Gui gui;
     private final KronoGui krono;
     private final Host host;
+    private final boolean opens;
     private final ImageView image;
     private final TitleBar bar;
     private final Node name;
@@ -183,6 +193,7 @@ public final class PictureViewer {
         this.krono = krono;
         this.host = host;
         this.bar = bar;
+        this.opens = host.opens();
 
         this.name = text("", SuiteType.BODY, Role.INK, SuiteType.UI);
         this.info = text("", SuiteType.SMALL, SuiteLook.TEXT, SuiteType.MONO);
@@ -205,16 +216,13 @@ public final class PictureViewer {
         this.strip = new Filmstrip(gui, krono, textures, thumbnail, host::pick);
 
         Node words = gui.column().width(TITLE_W).height(Length.AUTO).gap(Length.rem(0.375f))
-                .padding(Length.ZERO, Length.rem(0.375f)).clip(true).scroll(false, false)
+                .padding(Length.rem(0.25f), Length.rem(0.625f)).clip(true).scroll(false, false)
                 .children(name, info, count);
-        this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node());
-        if (host.opens()) {
-            Tile open = Tile.of(gui, Icons.FOLDER, "Open").onPress(host::open);
-            gui.landmark(landmarks + OPEN, open.node());
-            title.append(open.node());
-            gui.onClick(words, host::open);
+        if (opens) {
+            gui.landmark(landmarks + OPEN, words);
+            button(words, host::open);
         }
-        title.append(words);
+        this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
         Node browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
         this.tools = slab(gui.row()).alignItems(AlignItems.CENTER).children(background.node(), keep.node());
 
@@ -311,7 +319,7 @@ public final class PictureViewer {
     public synchronized void show(Showing s) {
         last = Objects.requireNonNull(s);
         count.text(s.count());
-        name.text(s.name());
+        name.text(opens && s.name().isEmpty() ? PROMPT : s.name());
         info.text(s.info());
         bar.title(s.title());
         prev.enabled(s.index() > 0);
@@ -538,6 +546,29 @@ public final class PictureViewer {
                 .scroll(false, false).background(Color.withAlpha(gui.theme().color(SuiteLook.CHROME), PANEL_ALPHA))
                 .border(Length.dp(1), gui.theme().color(Role.LINE))
                 .elevation(gui.theme().elevation(Relief.FLOATING));
+    }
+
+    /**
+     * The words as a button that runs {@code action}: a click anywhere on them, or Enter or Space while focused, and
+     * {@link Tile}'s shading on hover and press. At rest it is bare, so the words read as they do when not a button.
+     */
+    private void button(Node words, Runnable action) {
+        name.hitInert(true);
+        info.hitInert(true);
+        count.hitInert(true);
+        words.role("button").corner(WORDS_CORNER).border(Length.dp(1), Color.TRANSPARENT);
+        gui.focusable(words, true);
+        gui.cursor(words, CursorShape.POINTER);
+        gui.onClick(words, action);
+        gui.claim(words, ENTER, ClaimScope.FOCUSED, action);
+        gui.claim(words, SPACE, ClaimScope.FOCUSED, action);
+        gui.onState(words, s -> {
+            Theme theme = gui.theme();
+            boolean lit = s != InteractionState.NORMAL;
+            words.background(lit ? Tile.glass(theme.color(Role.RAISED, s)) : Color.TRANSPARENT)
+                    .border(Length.dp(1), lit ? theme.color(SuiteLook.LINE_STRONG) : Color.TRANSPARENT)
+                    .elevation(lit ? theme.elevation(Relief.RAISED, s) : Length.ZERO);
+        });
     }
 
     private Node text(String s, Length size, Role ink, int face) {
