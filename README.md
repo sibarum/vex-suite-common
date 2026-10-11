@@ -1,6 +1,6 @@
 # vex-suite-common
 
-What [Vexplore](../vexplore) and [Pix](../Pix) share: pictures decoded and packed for the GPU, the image viewer's
+What [Vexplore](../vexplore) and [Pix](../Pix) share: the sizes pictures are decoded at, the image viewer's
 tree and its parts, and the palette they are drawn in. A library, not an application; both apps depend on it, so a
 change here is a change to both.
 
@@ -8,19 +8,18 @@ change here is a change to both.
 mvn install        # build, test, and put it in the local Maven repository, before either app builds
 ```
 
-Needs the VexelRay stack and `imagelib-wrapper` in the local repository first, as the apps do.
+Needs the VexelRay stack and [`vexelray-codec`](../vexelray-codec) (and `imagelib-wrapper` behind it) in the local
+repository first, as the apps do.
+
+Pictures themselves are `vexelray-codec-image`'s: decoding (`Pictures`, `Decoded`, `Picture`, `Stamp`), the cache
+(`Lru`), the GPU (`Textures`) and one picture on a node (`ImageView`). Both apps name its `ImageStarter`, which builds
+the `Textures` and binds them to the window. What is here is what is particular to the suite.
 
 ## What is here
 
 ```
-Lru                 a cache bounded by weight, least recently used out first.
-
-pictures/           pixels, and nothing else. No GUI. Blocking: callers run these on Gui.offload().
-  Pictures          a file's picture through imagelib (PNG, JPEG, GIF, WebP, SVG and the rest, animated where the
-                    file is), at the thumbnail's size and, from the same decode, the viewer's. A failure is a reason.
-  Decoded           what Pictures returns: what the file is, and its picture at one or two sizes, or why not.
-  Picture           a decoded image, every frame packed into one RGBA8 sheet, scaled down and never up.
-  Stamp             which version of a file: the cache key.
+pictures/
+  Sizes             the two sizes the suite decodes at: a thumbnail's, and the viewer's from the same decode.
 
 view/               the viewer and its parts, on vexelray-gui.
   PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
@@ -28,10 +27,8 @@ view/               the viewer and its parts, on vexelray-gui.
                     pointer rests, and when pinned takes room of its own. Told what to show (Showing); tells
                     the application what the user did (Host). Vexplore shows it in a second window, Pix as its whole
                     window.
-  ImageView         one picture, fitted, animated, sliding in from the side it came from, over a backdrop.
   Filmstrip         the neighbours' thumbnails, gliding one square along on a step.
   Tile, Icons       the viewer's controls: one square size, an icon alone, its word the accessible name.
-  Textures          pictures on the GPU: uploaded once, recent ones kept, the rest handed to GuiApp.release.
   SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
   SuiteType         the faces and sizes the parts above draw with.
 ```

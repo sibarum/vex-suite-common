@@ -1,6 +1,5 @@
 package dev.sibarum.suite.view;
 
-import dev.sibarum.suite.pictures.Picture;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -11,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Where the viewer's steps land, which side a picture comes in from, and how much fits: all pure. */
+/** Where the viewer's steps land, the side a picture comes in from, and the strip's room: all pure. */
 class PictureViewerTest {
 
     private static final Path A = Path.of("a.png");
@@ -47,19 +46,6 @@ class PictureViewerTest {
         assertEquals(0, PictureViewer.direction(PICTURES, B, B), "a sharper copy of the same file does not slide");
         assertEquals(0, PictureViewer.direction(PICTURES, null, A), "the first picture shown just appears");
         assertEquals(0, PictureViewer.direction(PICTURES, Path.of("gone.png"), A));
-    }
-
-    @Test
-    void aPictureIsShownWholeAndNeverEnlarged() {
-        // 400 x 200 in a 1000 x 1000 stage: its own size, so 40% by 20%.
-        var small = new Picture(null, new byte[0], 400, 200, 1, 1, new int[1], 400, 200, false);
-        float[] f = ImageView.fraction(small, 1000f, 1000f);
-        assertEquals(0.4f, f[0], 1e-6f);
-        assertEquals(0.2f, f[1], 1e-6f);
-        // The same in a 200 x 200 stage: limited by its width, so all of it across and half down.
-        f = ImageView.fraction(small, 200f, 200f);
-        assertEquals(1f, f[0], 1e-6f);
-        assertEquals(0.5f, f[1], 1e-6f);
     }
 
     @Test

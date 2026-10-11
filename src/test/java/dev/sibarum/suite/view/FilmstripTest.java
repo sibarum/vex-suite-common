@@ -1,6 +1,6 @@
 package dev.sibarum.suite.view;
 
-import dev.sibarum.suite.pictures.Picture;
+import dev.vexelray.codec.image.Picture;
 import dev.vexelray.gui.core.ImageRegion;
 import org.junit.jupiter.api.Test;
 

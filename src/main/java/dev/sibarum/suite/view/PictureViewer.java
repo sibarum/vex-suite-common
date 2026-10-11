@@ -1,8 +1,10 @@
 package dev.sibarum.suite.view;
 
-import dev.sibarum.suite.pictures.Picture;
-import dev.sibarum.suite.view.ImageView.Backdrop;
 import dev.vexelray.canvas.Color;
+import dev.vexelray.codec.image.Picture;
+import dev.vexelray.codec.image.gui.ImageView;
+import dev.vexelray.codec.image.gui.ImageView.Backdrop;
+import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;

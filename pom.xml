@@ -10,8 +10,8 @@
 
     <name>vex-suite-common</name>
     <description>
-        What Vexplore and Pix share: pictures decoded and packed for the GPU, the viewer's tree and its parts, and the
-        palette they are drawn in.
+        What Vexplore and Pix share: the picture sizes they decode at, the viewer's tree and its parts, and the palette
+        they are drawn in. Pictures themselves (decoding, packing, textures, the image view) are vexelray-codec's.
     </description>
 
     <properties>
@@ -21,7 +21,7 @@
         <vexelray-gui.version>0.1.0-SNAPSHOT</vexelray-gui.version>
         <tactroller.version>1.0-SNAPSHOT</tactroller.version>
         <atchung.version>1.0-SNAPSHOT</atchung.version>
-        <imagelib.version>0.1.0-SNAPSHOT</imagelib.version>
+        <vexelray-codec.version>0.1.0-SNAPSHOT</vexelray-codec.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
@@ -50,11 +50,12 @@
             <artifactId>atchung-probe</artifactId>
             <version>${atchung.version}</version>
         </dependency>
-        <!-- Pixels from any image file as RGBA8 ready to upload. The GUI decodes nothing itself, by design. -->
+        <!-- Pictures: decoded through imagelib, packed for the GPU, uploaded once and shown on a node (Picture,
+             Pictures, Textures, ImageView). What the viewer and the filmstrip are built on. -->
         <dependency>
-            <groupId>sibarum.imagelib</groupId>
-            <artifactId>imagelib-wrapper</artifactId>
-            <version>${imagelib.version}</version>
+            <groupId>dev.vexelray.codec</groupId>
+            <artifactId>vexelray-codec-image</artifactId>
+            <version>${vexelray-codec.version}</version>
         </dependency>
 
         <dependency>
@@ -80,7 +81,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
                 <configuration>
-                    <!-- The picture tests decode for real, through imagelib's native library. -->
+                    <!-- Anything that reaches the codec's decoder crosses into imagelib's native library. -->
                     <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
