@@ -1,6 +1,7 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
+import dev.vexelray.canvas.FieldStyle;
 import dev.vexelray.canvas.ImageFilter;
 import dev.vexelray.codec.image.Picture;
 import dev.vexelray.codec.image.gui.ImageView;
@@ -341,13 +342,14 @@ public final class PictureViewer {
 
         // Settings: how the picture is scaled, moving and at rest, side by side, the same filters in each.
         Node movingList = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f))
-                .scroll(false, false).children(text("WHILE MOVING", SuiteType.SMALL, Role.DIM, SuiteType.UI));
+                .scroll(false, false).children(heading(textures, MaskIcon.QUALITY_LOW, "WHILE MOVING"));
         Node restingList = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f))
-                .scroll(false, false).children(text("AT REST", SuiteType.SMALL, Role.DIM, SuiteType.UI));
+                .scroll(false, false).children(heading(textures, MaskIcon.QUALITY_HIGH, "AT REST"));
         for (ImageFilter f : ImageFilter.values()) {
             String id = f.name().toLowerCase(Locale.ROOT).replace('_', '-');
-            Choice m = new Choice(gui, f.label(), () -> chooseScaling(f, null));
-            Choice r = new Choice(gui, f.label(), () -> chooseScaling(null, f));
+            MaskIcon icon = MaskIcon.of(f);
+            Choice m = new Choice(gui, textures, icon, f.label(), () -> chooseScaling(f, null));
+            Choice r = new Choice(gui, textures, icon, f.label(), () -> chooseScaling(null, f));
             gui.landmark(landmarks + MOVING + id, m.node());
             gui.landmark(landmarks + RESTING + id, r.node());
             movingChoices.put(f, m);
@@ -896,6 +898,15 @@ public final class PictureViewer {
     private void chooseScaling(ImageFilter moving, ImageFilter resting) {
         scaling(moving, resting);
         host.scaled(this.moving, this.resting);
+    }
+
+    /** A list's heading: its icon, drawn as a field in the caption's colour, and its words. */
+    private Node heading(Textures textures, MaskIcon icon, String words) {
+        Node glyph = gui.box().size(Length.rem(1.125f), Length.rem(1.125f)).hitInert(true);
+        gui.onResize(glyph, box -> icon.draw(glyph, textures, FieldStyle.plain(gui.theme().color(Role.DIM))));
+        return gui.row().width(Length.AUTO).height(Length.AUTO).alignItems(AlignItems.CENTER).gap(Length.rem(0.5f))
+                .padding(Length.rem(0.25f), Length.rem(0.625f)).scroll(false, false)
+                .children(glyph, text(words, SuiteType.SMALL, Role.DIM, SuiteType.UI));
     }
 
     /** Mark the chosen filter in each list. */

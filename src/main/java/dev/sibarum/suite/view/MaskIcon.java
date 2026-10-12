@@ -1,83 +1,100 @@
 package dev.sibarum.suite.view;
 
-import dev.vexelray.canvas.Color;
-import dev.vexelray.codec.image.Decoded;
-import dev.vexelray.codec.image.Picture;
-import dev.vexelray.codec.image.Pictures;
+import dev.vexelray.canvas.FieldStyle;
+import dev.vexelray.canvas.ImageFilter;
+import dev.vexelray.codec.image.MaskField;
 import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Node;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * One of the suite's utility icons, from {@code vexelray-icons/utility/small}: a mask, one solid shape whose fill is
- * {@code currentColor}, copied into this module's resources ({@code icons/<name>-mask.svg}) as that folder's README
- * asks. Where {@link Icons} are strokes drawn here, these are the icon set's own art.
+ * One of the suite's utility icons, from {@code vexelray-icons/utility/small}: a mask, one solid shape, copied into this
+ * module's resources ({@code icons/<name>-mask.svg}) as that folder's README asks. Where {@link Icons} are strokes drawn
+ * here, these are the icon set's own art.
  *
- * <p>Drawn by decoding the SVG at the pixel size of its box, with the root's {@code color} set to the ink first, so it
- * is sharp at any size and in any colour a control's state asks for. Each size and colour is decoded once, and uploaded
- * once by the {@link Textures} it is drawn with.
+ * <p>Drawn as a signed distance field ({@link MaskField}, vexelray-canvas's {@code DistanceField} of the mask): made
+ * once from the mask, uploaded once, and then any size and any colour, with a glow or a soft shadow from the shader ({@link FieldStyle}), for nothing more. A state that
+ * changes an icon's colour or effect changes four numbers, not a texture.
  */
 enum MaskIcon {
 
     /** A gear: the settings. */
-    SETTINGS("settings");
+    SETTINGS("settings"),
+    /** A picture gone to blocks: how a picture is scaled while it moves. */
+    QUALITY_LOW("quality-low"),
+    /** A clean picture with a spark: how it is scaled at rest. */
+    QUALITY_HIGH("quality-high"),
+    FILTER_NEAREST("filter-nearest"),
+    FILTER_SHARP_BILINEAR("filter-sharp-bilinear"),
+    FILTER_BILINEAR("filter-bilinear"),
+    FILTER_GAUSSIAN("filter-gaussian"),
+    FILTER_NORMAL("filter-normal"),
+    FILTER_B_SPLINE("filter-bspline"),
+    FILTER_MITCHELL("filter-mitchell"),
+    FILTER_LANCZOS("filter-lanczos");
 
-    private final String svg;
-    private final Map<String, Picture> decoded = new ConcurrentHashMap<>();
+    /** The field's texels across the icon's own square: four to a unit of its 16-unit grid. */
+    static final int INNER = 64;
+    /** Texels of margin round it, and the farthest a glow or a shadow can reach: a quarter of the icon. */
+    static final int SPREAD = 16;
 
-    MaskIcon(String name) {
-        this.svg = read(name + "-mask.svg");
+    private final String file;
+    private volatile MaskField field;
+
+    MaskIcon(String file) {
+        this.file = file;
+    }
+
+    /** The icon for how {@code filter} scales, or null if the set has none for it. */
+    static MaskIcon of(ImageFilter filter) {
+        try {
+            return valueOf("FILTER_" + filter.name());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /**
-     * Show this icon on {@code glyph}, {@code side} px square, in {@code ink}. False if it cannot be drawn: no window
-     * to upload into yet, or the decoder is not there; the control is still a control.
+     * Show this icon across {@code glyph} drawn with {@code style}. False if it cannot be drawn: no window to upload
+     * into yet, or the mask does not rasterise; the control is still a control.
      */
-    boolean draw(Node glyph, Textures textures, int side, Color ink) {
-        if (side <= 0) {
-            return false;
+    boolean draw(Node glyph, Textures textures, FieldStyle style) {
+        MaskField f = field();
+        return f != null && textures.showData(f.picture(), t -> glyph.field(t, f.side(), f.spread(), style));
+    }
+
+    /** The field, made the first time it is asked for. */
+    private MaskField field() {
+        MaskField f = field;
+        if (f == null) {
+            synchronized (this) {
+                f = field;
+                if (f == null) {
+                    f = MaskField.of("icon-field:" + file, read(), INNER, SPREAD);
+                    field = f;
+                }
+            }
         }
-        String hex = hex(ink);
-        String key = "icon:" + name().toLowerCase(Locale.ROOT) + ":" + hex + ":" + side;
-        Picture p = decoded.computeIfAbsent(key, k -> {
-            Decoded d = Pictures.of(k, tinted(hex), side);
-            return d.image() ? d.picture() : null;
-        });
-        return p != null && textures.show(p, glyph::image);
+        return f;
     }
 
-    /** The SVG with its root's {@code color}, which its {@code currentColor} fill takes, set to {@code hex}. */
-    private byte[] tinted(String hex) {
-        return svg.replaceFirst("<svg color=\"#[0-9a-fA-F]{3,8}\"", "<svg color=\"" + hex + "\"")
-                .getBytes(StandardCharsets.UTF_8);
-    }
-
-    private static String hex(Color c) {
-        return String.format(Locale.ROOT, "#%02x%02x%02x", channel(c.r()), channel(c.g()), channel(c.b()));
-    }
-
-    private static int channel(float c) {
-        return Math.round(Math.max(0f, Math.min(1f, c)) * 255f);
-    }
-
-    private static String read(String file) {
-        try (InputStream in = MaskIcon.class.getResourceAsStream("icons/" + file)) {
+    private byte[] read() {
+        String name = file + "-mask.svg";
+        try (InputStream in = MaskIcon.class.getResourceAsStream("icons/" + name)) {
             if (in == null) {
-                throw new IllegalStateException("no icon " + file + " on the class path");
+                throw new IllegalStateException("no icon " + name + " on the class path");
             }
-            String s = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            if (!s.startsWith("<svg color=\"")) {
-                throw new IllegalStateException(file + " is not a tintable mask: its root has no color");
-            }
-            return s;
+            return in.readAllBytes();
         } catch (IOException e) {
-            throw new IllegalStateException("cannot read icon " + file + ": " + e.getMessage(), e);
+            throw new IllegalStateException("cannot read icon " + name + ": " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return name().toLowerCase(Locale.ROOT);
     }
 }

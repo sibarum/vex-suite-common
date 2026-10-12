@@ -41,7 +41,8 @@ view/               the viewer and its parts, on vexelray-gui.
                     is drawn, and laid over the picture. While it moves, the picture is drawn as it was.
   Filmstrip         the neighbours' thumbnails, gliding one square along on a step.
   Tile, Icons       the viewer's controls: one square size, an icon alone, its word the accessible name.
-  MaskIcon          the icon set's own art (vexelray-icons/utility/small), tinted and decoded at the tile's size.
+  MaskIcon          the icon set's own art (vexelray-icons/utility/small), made once into a distance field and drawn
+                    at any size and colour, with a glow or a shadow from the shader.
   Choice            one of a few, as a row of words: the Settings menu's filters.
   SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
   SuiteType         the faces and sizes the parts above draw with.

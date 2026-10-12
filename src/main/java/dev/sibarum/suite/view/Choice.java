@@ -1,6 +1,8 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
+import dev.vexelray.canvas.FieldStyle;
+import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;
@@ -28,17 +30,33 @@ final class Choice {
     private static final Shortcut ENTER = Shortcut.of(Key.ENTER);
     private static final Shortcut SPACE = Shortcut.of(Key.SPACE);
 
+    /** The icon before the words: a little larger than the text, so its detail reads. */
+    private static final Length ICON = Length.rem(1.375f);
+
     private final Gui gui;
     private final Node node;
     private final Node words;
+    private final Node glyph;
+    private final Textures textures;
+    private final MaskIcon icon;
+    private volatile float iconPx;
     private volatile boolean on;
     private volatile InteractionState state = InteractionState.NORMAL;
 
-    Choice(Gui gui, String label, Runnable onPress) {
+    /** A choice named {@code label}, after {@code icon} drawn as a field, or with the icon's room left empty for null. */
+    Choice(Gui gui, Textures textures, MaskIcon icon, String label, Runnable onPress) {
         this.gui = gui;
+        this.textures = textures;
+        this.icon = icon;
         this.words = gui.text(label).font(SuiteType.UI).textSize(SuiteType.BODY).wordWrap(false).hitInert(true);
+        this.glyph = gui.box().size(ICON, ICON).hitInert(true);
         this.node = gui.row().role("radio").width(Length.FILL).height(Length.AUTO).alignItems(AlignItems.CENTER)
-                .padding(Length.rem(0.375f), Length.rem(0.75f)).corner(CORNER).scroll(false, false).children(words);
+                .gap(Length.rem(0.5f)).padding(Length.rem(0.3125f), Length.rem(0.625f)).corner(CORNER)
+                .scroll(false, false).children(glyph, words);
+        gui.onResize(glyph, box -> {
+            iconPx = box.rect().w();
+            paint();
+        });
         gui.focusable(node, true);
         gui.cursor(node, CursorShape.POINTER);
         gui.onClick(node, onPress);
@@ -66,16 +84,23 @@ final class Choice {
         Theme theme = gui.theme();
         InteractionState s = state;
         boolean lit = s != InteractionState.NORMAL;
+        Color ink;
         if (on) {
             node.background(Tile.glass(theme.color(SuiteLook.CHOSEN, s)))
                     .border(Length.dp(1), theme.color(Role.ACCENT))
                     .elevation(theme.elevation(Relief.RAISED, s));
-            words.textColor(theme.color(SuiteLook.CHOSEN_INK));
+            ink = theme.color(SuiteLook.CHOSEN_INK);
         } else {
             node.background(lit ? Tile.glass(theme.color(Role.RAISED, s)) : Color.TRANSPARENT)
                     .border(Length.dp(1), lit ? theme.color(SuiteLook.LINE_STRONG) : Color.TRANSPARENT)
                     .elevation(lit ? theme.elevation(Relief.RAISED, s) : Length.ZERO);
-            words.textColor(theme.color(lit ? Role.INK : SuiteLook.TEXT));
+            ink = theme.color(lit ? Role.INK : SuiteLook.TEXT);
+        }
+        words.textColor(ink);
+        if (icon != null) {
+            // The chosen one glows in its ink; under the pointer, an icon lifts off its own shadow.
+            float px = iconPx;
+            icon.draw(glyph, textures, new FieldStyle(ink, on ? px * 0.2f : 0f, !on && lit ? px * 0.08f : 0f));
         }
     }
 }
