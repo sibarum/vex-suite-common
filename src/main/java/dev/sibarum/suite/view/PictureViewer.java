@@ -1,6 +1,7 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
+import dev.vexelray.canvas.ImageFilter;
 import dev.vexelray.codec.image.Picture;
 import dev.vexelray.codec.image.gui.ImageView;
 import dev.vexelray.codec.image.gui.ImageView.Backdrop;
@@ -9,6 +10,7 @@ import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;
 import dev.vexelray.gui.core.input.CursorShape;
+import dev.vexelray.gui.core.input.DragEvent;
 import dev.vexelray.gui.core.input.InputTopics;
 import dev.vexelray.gui.core.input.InteractionState;
 import dev.vexelray.gui.core.input.Shortcut;
@@ -24,9 +26,11 @@ import dev.vexelray.gui.krono.KronoGui;
 import dev.vexelray.gui.krono.Scheduled;
 import dev.vexelray.gui.widget.TitleBar;
 import sibarum.kronometer.Dur;
+import sibarum.kronometer.Time;
 import sibarum.kronometer.anim.Ease;
 import sibarum.tactroller.api.InputEvent;
 import sibarum.tactroller.api.Key;
+import sibarum.tactroller.api.Modifier;
 
 import java.nio.file.Path;
 import java.util.EnumMap;
@@ -52,7 +56,7 @@ import java.util.function.Function;
  *
  * <p><b>Every control is a {@link Tile}</b>: one size, an icon alone. They sit in one bar along the bottom, in three
  * groups: Close and what this is on the left, moving through the folder in the middle (Previous, the
- * {@link Filmstrip}, Next), and how it is shown on the right (Background, Keep shown). When the host
+ * {@link Filmstrip}, Next), and how it is shown on the right (Background, Settings, Keep shown). When the host
  * {@link Host#opens opens}, the words that say what this is are its Open button, shaded on hover like a tile, and say
  * {@value #PROMPT} while nothing is open.
  *
@@ -66,6 +70,12 @@ import java.util.function.Function;
  * the picture shrinking to the rest so that no control covers any of it. The backdrop menu is drawn over the picture
  * either way; it closes on a choice, a second press, a click on the picture, or Escape.
  *
+ * <p><b>The picture can be looked at closely</b> ({@link Lens}): the wheel zooms about the pointer, a drag moves the
+ * picture, Ctrl and a drag turn it to any angle about its centre, Shift and the wheel turn it a little, R and Shift+R
+ * turn it a quarter, and a double click fits it again. It is held where it can be seen: no larger than the stage, it
+ * stays inside; larger, it keeps at least a quarter of the stage covered, and pulled past that it springs back with
+ * the momentum it had. Another picture starts fitted and upright.
+ *
  * <p><b>Active only while shown.</b> The idle fade runs, and a picture is uploaded, only between {@link #active
  * active(true)} and {@code active(false)}: the window it is in is up, and its {@link Textures} are bound. A picture
  * handed over before then is drawn when it becomes active, which matters to an application whose first picture is
@@ -73,7 +83,12 @@ import java.util.function.Function;
  *
  * <p>Landmarks, each with the prefix given to the constructor: {@link #NAME}, {@link #INFO}, {@link #COUNT} (written at
  * once on every step, so scripts await them), the tiles {@link #CLOSE}, {@link #OPEN}, {@link #PREVIOUS}, {@link #NEXT},
- * {@link #BACKGROUND}, {@link #KEEP}, and the backdrop swatches {@link #BACKDROP}{@code checker} and so on.
+ * {@link #BACKGROUND}, {@link #SETTINGS}, {@link #KEEP}, the backdrop swatches {@link #BACKDROP}{@code checker} and so
+ * on, and the scaling choices {@link #MOVING}{@code lanczos} and {@link #RESTING}{@code lanczos} and so on.
+ *
+ * <p><b>Settings</b> (the gear) opens a menu of how the picture is scaled: while it moves, by the GPU every frame from
+ * its texture, and at rest, made again from the file's own pixels (see {@code Sharpen}). The same filters in each, from
+ * {@link ImageFilter}; the application keeps the choice ({@link Host#scaled}) and gives it back ({@link #scaling}).
  */
 public final class PictureViewer {
 
@@ -99,6 +114,13 @@ public final class PictureViewer {
 
         /** Open something else: a click on the words, or Enter or Space on them. Only called when {@link #opens}. */
         default void open() {
+        }
+
+        /**
+         * The user chose how pictures are scaled in the Settings menu: {@code moving}, as they are drawn every frame,
+         * and {@code resting}, as they are made again once still. Already applied; this is for keeping it.
+         */
+        default void scaled(ImageFilter moving, ImageFilter resting) {
         }
     }
 
@@ -129,10 +151,17 @@ public final class PictureViewer {
     public static final String BACKGROUND = "background";
     public static final String KEEP = "keep";
     public static final String BACKDROP = "backdrop.";
+    public static final String SETTINGS = "settings";
+    public static final String MOVING = "moving.";
+    public static final String RESTING = "resting.";
 
     /** How long the pointer rests before the controls fade, and how long the fade takes. */
     public static final int IDLE_MS = 1200;
     private static final int FADE_MS = 240;
+    /** A frame of the picture's motion: zoom easing, a fling, the spring back. */
+    private static final int FRAME_MS = 16;
+    /** How long the picture rests before the sharper copy of it is made. */
+    private static final int SETTLE_MS = 150;
 
     private static final Length SLAB_CORNER = Length.rem(1.625f);
     /** The title's text column is this wide and clips, so a long name never pushes the filmstrip aside. */
@@ -169,6 +198,7 @@ public final class PictureViewer {
     private final Tile next;
     private final Tile background;
     private final Tile keep;
+    private final Tile settings;
     private final Filmstrip strip;
     private final Node controls;
     private final Node title;
@@ -180,16 +210,31 @@ public final class PictureViewer {
     /** Everything that fades: the bar, and the two sides. */
     private final List<Node> chrome;
     private final Node stage;
-    private final Node menu;
-    private final Node menuLift;
+    /** The two menus over the picture, Background's and Settings', of which one at most is open. */
+    private final Menu backdropMenu;
+    private final Menu settingsMenu;
+    private final Map<ImageFilter, Choice> movingChoices = new EnumMap<>(ImageFilter.class);
+    private final Map<ImageFilter, Choice> restingChoices = new EnumMap<>(ImageFilter.class);
     private final Map<Backdrop, Tile> swatches = new EnumMap<>(Backdrop.class);
 
     /** The window's box, for drawing the checkerboard across it, and the size it was last drawn at. */
     private volatile NodeLayout windowBox = NodeLayout.ABSENT;
     private long checkered = -1;
 
-    // Guarded by this.
-    private boolean active;
+    /** How the picture is looked at, and its motion while it moves. Guarded by the lens. */
+    private final Lens lens = new Lens();
+    private Scheduled motion;
+    /** Bumped by every motion started and stopped, so a motion that was stopped never steps again. */
+    private int moves;
+    /** Bumped by every change to the lens, so a sharper copy is asked for only after the last of them. */
+    private int settles;
+    /** The sharper copy of what is shown, made at rest. */
+    private final Sharpen sharpen;
+    /** Whether the drag in hand turns the picture rather than moving it: Ctrl was held as it started. */
+    private volatile boolean twisting;
+
+    // Guarded by this; volatile, since the lens reads it under its own lock.
+    private volatile boolean active;
     private Showing last;
     private Picture shown;
     /** The file {@link #shown} is of: where the next picture is coming from, for the side it slides in on. */
@@ -199,7 +244,11 @@ public final class PictureViewer {
     private volatile long stirred;
     private volatile boolean hidden;
     private volatile boolean keepShown;
-    private volatile boolean menuOpen;
+    /** The menu open, or null. */
+    private volatile Menu open;
+    /** How the picture is scaled moving (the GPU, every frame) and at rest (made again, {@link Sharpen}). */
+    private volatile ImageFilter moving = ImageFilter.BILINEAR;
+    private volatile ImageFilter resting = ImageFilter.LANCZOS;
     /** Which of {@link #chrome} the pointer is on, a bit each: none fades from under the pointer. */
     private final AtomicInteger over = new AtomicInteger();
     private final AtomicInteger fade = new AtomicInteger();
@@ -238,12 +287,14 @@ public final class PictureViewer {
         Tile close = Tile.of(gui, Icons.CLOSE, "Close").onPress(host::close);
         this.prev = Tile.of(gui, Icons.PREVIOUS, "Previous").onPress(() -> host.step(-1));
         this.next = Tile.of(gui, Icons.NEXT, "Next").onPress(() -> host.step(1));
-        this.background = Tile.of(gui, Icons.BACKGROUND, "Background").toggle().onPress(this::toggleMenu);
+        this.background = Tile.of(gui, Icons.BACKGROUND, "Background").toggle().onPress(this::toggleBackdrop);
+        this.settings = Tile.of(gui, textures, MaskIcon.SETTINGS, "Settings").toggle().onPress(this::toggleSettings);
         this.keep = Tile.of(gui, Icons.PIN, "Keep shown").toggle().onPress(this::toggleKeep);
         gui.landmark(landmarks + CLOSE, close.node());
         gui.landmark(landmarks + PREVIOUS, prev.node());
         gui.landmark(landmarks + NEXT, next.node());
         gui.landmark(landmarks + BACKGROUND, background.node());
+        gui.landmark(landmarks + SETTINGS, settings.node());
         gui.landmark(landmarks + KEEP, keep.node());
 
         this.strip = new Filmstrip(gui, krono, textures, thumbnail, host::pick);
@@ -257,7 +308,8 @@ public final class PictureViewer {
         }
         this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
         this.browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
-        this.tools = slab(gui.row()).alignItems(AlignItems.CENTER).children(background.node(), keep.node());
+        this.tools = slab(gui.row()).alignItems(AlignItems.CENTER)
+                .children(background.node(), settings.node(), keep.node());
 
         Node left = gui.row().width(Length.grow(1f)).height(Length.AUTO).scroll(false, false).children(title);
         Node right = gui.row().width(Length.grow(1f)).height(Length.AUTO).justify(Justify.END).scroll(false, false)
@@ -285,15 +337,41 @@ public final class PictureViewer {
             choices.append(t.node());
         }
         Node caption = text("BACKGROUND", SuiteType.SMALL, Role.DIM, SuiteType.UI);
-        this.menuLift = gui.box().size(Length.dp(1), BAR_ROOM);
-        this.menu = gui.column().height(Length.AUTO).padding(MARGIN).alignItems(AlignItems.END).scroll(false, false)
-                .floatAt(Length.percent(100f), Length.percent(100f)).visible(false)
-                .children(slab(gui.column()).alignItems(AlignItems.CENTER).children(caption, choices), menuLift);
+        this.backdropMenu = menu(background, slab(gui.column()).alignItems(AlignItems.CENTER).children(caption, choices));
+
+        // Settings: how the picture is scaled, moving and at rest, side by side, the same filters in each.
+        Node movingList = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f))
+                .scroll(false, false).children(text("WHILE MOVING", SuiteType.SMALL, Role.DIM, SuiteType.UI));
+        Node restingList = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f))
+                .scroll(false, false).children(text("AT REST", SuiteType.SMALL, Role.DIM, SuiteType.UI));
+        for (ImageFilter f : ImageFilter.values()) {
+            String id = f.name().toLowerCase(Locale.ROOT).replace('_', '-');
+            Choice m = new Choice(gui, f.label(), () -> chooseScaling(f, null));
+            Choice r = new Choice(gui, f.label(), () -> chooseScaling(null, f));
+            gui.landmark(landmarks + MOVING + id, m.node());
+            gui.landmark(landmarks + RESTING + id, r.node());
+            movingChoices.put(f, m);
+            restingChoices.put(f, r);
+            movingList.append(m.node());
+            restingList.append(r.node());
+        }
+        Node lists = gui.row().width(Length.AUTO).height(Length.AUTO).gap(MARGIN).scroll(false, false)
+                .children(movingList, restingList);
+        Node scalingCaption = text("SCALING", SuiteType.SMALL, Role.DIM, SuiteType.UI);
+        this.settingsMenu = menu(settings, slab(gui.column()).alignItems(AlignItems.START)
+                .padding(Length.rem(0.75f)).children(scalingCaption, lists));
+        showScaling();
 
         this.image = new ImageView(gui, krono, textures, Length.ZERO, Length.ZERO).bare();
+        this.sharpen = new Sharpen(gui.offload(), image);
+        image.filter(moving);
         gui.onClick(image.node(), this::closeMenu);
+        gui.cursor(image.node(), CursorShape.GRAB);
+        gui.onDragUi(image.node(), this::drag);
+        gui.onDoubleClick(image.node(), () -> look(Lens::fit));
+        image.onFit(() -> look(l -> l.measure(image.fitted())));
         this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
-                .children(image.node(), leftSide, rightSide, menu);
+                .children(image.node(), leftSide, rightSide, backdropMenu.node(), settingsMenu.node());
         gui.root().direction(Direction.COLUMN).children(bar.node(), stage, controls);
         dock();
         gui.onResize(gui.root(), box -> {
@@ -309,15 +387,21 @@ public final class PictureViewer {
         gui.shortcut(Key.HOME, () -> host.step(Integer.MIN_VALUE));
         gui.shortcut(Key.END, () -> host.step(Integer.MAX_VALUE));
         gui.shortcut(Key.ESCAPE, () -> {
-            if (menuOpen) {
+            if (open != null) {
                 closeMenu();
             } else {
                 host.close();
             }
         });
+        gui.shortcut(Key.R, () -> look(l -> l.quarter(1)));
+        gui.shortcut(Key.R, () -> look(l -> l.quarter(-1)), Modifier.SHIFT);
 
-        // The framework has no per-node pointer-move hook, so the bar's idle fade reads input off the bus.
+        // The framework has no per-node pointer-move hook, so the bar's idle fade reads input off the bus; and no
+        // per-node wheel hook, so the wheel over the picture is read there too.
         gui.bus().subscribe(InputTopics.INPUT, e -> {
+            if (e instanceof InputEvent.Scrolled s) {
+                wheel(s);
+            }
             if (e instanceof InputEvent.PointerMoved || e instanceof InputEvent.ButtonPressed
                     || e instanceof InputEvent.Scrolled
                     || e instanceof InputEvent.KeyPressed k && k.key() == Key.TAB) {
@@ -343,6 +427,8 @@ public final class PictureViewer {
                     idle.cancel();
                     idle = null;
                 }
+                still();
+                sharpen.forget();
                 image.clear();
             } else if (last != null) {
                 show(last);
@@ -374,7 +460,13 @@ public final class PictureViewer {
             if (!s.keep()) {
                 shown = null;
                 shownPath = null;
+                still();
+                sharpen.forget();
                 image.clear();
+                look(l -> {
+                    l.reset();
+                    l.measure(null);
+                });
             }
             return;
         }
@@ -385,9 +477,18 @@ public final class PictureViewer {
                 stir();
             }
             Path at = s.index() < 0 ? null : s.pictures().get(s.index());
+            // A sharper copy of the picture up is looked at as it was; another picture starts fitted and upright,
+            // and the one it replaces goes out as it was.
+            boolean same = at != null && at.equals(shownPath);
             if (image.show(want, direction(s.pictures(), shownPath, at))) {
                 shown = want;
                 shownPath = at;
+                look(l -> {
+                    if (!same) {
+                        l.reset();
+                    }
+                    l.measure(image.fitted());
+                });
             }
         }
     }
@@ -450,7 +551,7 @@ public final class PictureViewer {
      * @param arrowsInBar Previous and Next in the bar, either side of the filmstrip; otherwise at the window's sides
      * @param sides       whether they are shown at the window's sides
      * @param title       Close and the words
-     * @param tools       Background and Keep shown
+     * @param tools       Background, Settings and Keep shown
      */
     record Fit(int thumbnails, boolean arrowsInBar, boolean sides, boolean title, boolean tools) {
     }
@@ -458,14 +559,15 @@ public final class PictureViewer {
     /**
      * What fits a bar {@code width} px across inside its margins, its tiles {@code tile} px square. The middle group
      * comes first while it has room for a thumbnail; then Previous and Next go to the window's sides, and the two side
-     * groups share the bar, until they do not fit side by side, when Background and Keep shown go, and then the rest.
+     * groups share the bar, until they do not fit side by side, when Background, Settings and Keep shown go, and then
+     * the rest.
      */
     static Fit fit(float width, float tile) {
         float gap = tile / 9f;
         float barGap = 2f * gap;
         // Each slab: its tiles, its padding and a gap between each two, and its 1 px edges.
         float title = tile + tile * TITLE_REM / Tile.SIDE_REM + 3f * gap + 2f;
-        float tools = 2f * tile + 3f * gap + 2f;
+        float tools = 3f * tile + 4f * gap + 2f;   // Background, Settings and Keep shown
         int n = thumbnails(width, Math.max(title, tools), tile, gap, barGap);
         if (n > 0) {
             return new Fit(n, true, false, true, true);
@@ -530,7 +632,161 @@ public final class PictureViewer {
             controls.floatAt(Length.ZERO, Length.percent(100f));
         }
         stage.padding(Length.ZERO, pinned && arrowsAtSides ? SIDE_ROOM : Length.ZERO);
-        menuLift.visible(!pinned);
+        backdropMenu.lift().visible(!pinned);
+        settingsMenu.lift().visible(!pinned);
+    }
+
+    // ---------------------------------------------------------------- looking: zoom, pan, turn
+
+    /**
+     * Change how the picture is looked at, draw it, and keep it moving for as long as it moves. From any thread.
+     * The lens is the lock, taken after this one and before the view's, never the other way round.
+     */
+    private void look(java.util.function.Consumer<Lens> change) {
+        synchronized (lens) {
+            change.accept(lens);
+            image.pose(lens.pose());
+            if (motion == null && active && lens.moving()) {
+                int g = ++moves;
+                motion = krono.spork("picture-motion", () -> move(g));
+            }
+            settle();
+        }
+    }
+
+    /**
+     * Something changed how the picture is looked at: if it is at rest, ask for it sharper once it has stayed so for
+     * {@link #SETTLE_MS}; if not, the motion asks when it stops. Under the lens.
+     */
+    private void settle() {
+        int g = ++settles;
+        if (active && lens.still()) {
+            krono.after(Dur.ms(SETTLE_MS), () -> settled(g));
+        }
+    }
+
+    /** At rest since settle {@code g}, unless something has happened since: make what is shown sharper. */
+    private void settled(int g) {
+        Path path;
+        Picture of;
+        synchronized (this) {
+            path = shownPath;
+            of = shown;
+        }
+        // Where the stage is on the screen, so the part made can land on whole pixels.
+        NodeLayout box = image.node().layout();
+        float originX = box.present() ? box.content().x() : 0f;
+        float originY = box.present() ? box.content().y() : 0f;
+        float[] visible;
+        synchronized (lens) {
+            if (g != settles || !lens.still()) {
+                return;
+            }
+            visible = lens.visible(Sharpen.MARGIN, originX, originY);
+        }
+        sharpen.request(path, of, visible, resting);
+    }
+
+    /** Motion {@code g}'s frames: step the lens and draw it, until it is still or another has taken over. */
+    private void move(int g) {
+        while (true) {
+            Time.advance(Dur.ms(FRAME_MS));
+            synchronized (lens) {
+                if (g != moves) {
+                    return;   // stopped, and perhaps started again since
+                }
+                boolean moving = lens.step(FRAME_MS / 1000f);
+                image.pose(lens.pose());
+                if (!moving) {
+                    motion = null;
+                    settle();
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Stop the motion where it is. */
+    private void still() {
+        synchronized (lens) {
+            moves++;
+            if (motion != null) {
+                motion.cancel();
+                motion = null;
+            }
+        }
+    }
+
+    /**
+     * The wheel, anywhere over the picture that no control covers: zoom about the pointer, or with Shift held a
+     * fine turn. Up is in, and clockwise.
+     */
+    private void wheel(InputEvent.Scrolled s) {
+        if (open != null || over.get() != 0) {
+            return;
+        }
+        float[] p = onStage(s.x(), s.y());
+        if (p == null) {
+            return;
+        }
+        if (gui.modifiers().value().contains(Modifier.SHIFT)) {
+            // Some platforms send Shift and the wheel as a sideways scroll.
+            float notches = (float) (s.yOffset() != 0 ? s.yOffset() : s.xOffset());
+            look(l -> l.turn(notches));
+        } else if (s.yOffset() != 0) {
+            float notches = (float) s.yOffset();
+            look(l -> l.wheel(notches, p[0], p[1]));
+        }
+    }
+
+    /** A drag on the picture moves it, or with Ctrl held at the start, turns it about its centre with the pointer. */
+    private void drag(DragEvent e) {
+        long now = System.nanoTime();
+        float[] p = onStage(e.x(), e.y());
+        if (e.phase() == DragEvent.Phase.START) {
+            twisting = e.has(Modifier.CONTROL);
+            gui.cursor(image.node(), CursorShape.GRABBING);
+            look(l -> {
+                if (!l.measured() || p == null) {
+                    return;
+                }
+                if (twisting) {
+                    l.twistFrom(p[0], p[1]);
+                } else {
+                    l.grab(now);
+                }
+            });
+        } else if (e.phase() == DragEvent.Phase.MOVE) {
+            look(l -> {
+                if (!l.measured()) {
+                    return;
+                }
+                if (!twisting) {
+                    l.drag(e.dx(), e.dy(), now);
+                } else if (p != null) {
+                    l.twist(p[0], p[1]);
+                }
+            });
+        } else {
+            gui.cursor(image.node(), CursorShape.GRAB);
+            look(l -> {
+                l.twistEnd();
+                l.release(now);
+            });
+        }
+    }
+
+    /** The window point {@code (x, y)} from the picture stage's centre, or null when it is not over the stage. */
+    private float[] onStage(float x, float y) {
+        NodeLayout box = image.node().layout();
+        if (!box.present()) {
+            return null;
+        }
+        var r = box.content();
+        if (x < r.x() || y < r.y() || x > r.x() + r.w() || y > r.y() + r.h()) {
+            return null;
+        }
+        return new float[] {x - (r.x() + r.w() / 2f), y - (r.y() + r.h() / 2f)};
     }
 
     // ---------------------------------------------------------------- background
@@ -564,24 +820,90 @@ public final class PictureViewer {
         }
     }
 
-    private void toggleMenu() {
-        if (menuOpen) {
-            closeMenu();
-        } else {
-            menuOpen = true;
-            menu.visible(true);
-            background.on(true);
+    /**
+     * A menu over the picture, opened by its tile: its panel, floating at the stage's bottom right, and a spacer under
+     * it that lifts it above the bar while the bar floats.
+     */
+    private record Menu(Node node, Node lift, Tile tile) {
+    }
+
+    /** A menu of {@code panel}, opened by {@code tile}. */
+    private Menu menu(Tile tile, Node panel) {
+        Node lift = gui.box().size(Length.dp(1), BAR_ROOM);
+        Node node = gui.column().height(Length.AUTO).padding(MARGIN).alignItems(AlignItems.END).scroll(false, false)
+                .floatAt(Length.percent(100f), Length.percent(100f)).visible(false).children(panel, lift);
+        return new Menu(node, lift, tile);
+    }
+
+    private void toggleBackdrop() {
+        toggle(backdropMenu);
+    }
+
+    private void toggleSettings() {
+        toggle(settingsMenu);
+    }
+
+    /** Open {@code m}, closing any other; or close it, if it is the one open. */
+    private synchronized void toggle(Menu m) {
+        Menu was = open;
+        closeMenu();
+        if (was != m) {
+            open = m;
+            m.node().visible(true);
+            m.tile().on(true);
         }
     }
 
-    private void closeMenu() {
-        if (!menuOpen) {
+    private synchronized void closeMenu() {
+        Menu m = open;
+        if (m == null) {
             return;
         }
-        menuOpen = false;
-        menu.visible(false);
-        background.on(false);
+        open = null;
+        m.node().visible(false);
+        m.tile().on(false);
         stir();
+    }
+
+    // ---------------------------------------------------------------- scaling
+
+    /**
+     * Scale pictures with {@code moving} as they are drawn every frame, and with {@code resting} when they are made
+     * again at rest: the application's kept choice, given back. Null leaves that one as it is. Does not call
+     * {@link Host#scaled}.
+     */
+    public void scaling(ImageFilter moving, ImageFilter resting) {
+        if (moving != null) {
+            this.moving = moving;
+            image.filter(moving);
+        }
+        if (resting != null) {
+            this.resting = resting;
+            look(l -> { });   // made again, the new way, once at rest
+        }
+        showScaling();
+    }
+
+    public ImageFilter moving() {
+        return moving;
+    }
+
+    public ImageFilter resting() {
+        return resting;
+    }
+
+    /** A choice from the Settings menu: apply it, and tell the application. */
+    private void chooseScaling(ImageFilter moving, ImageFilter resting) {
+        scaling(moving, resting);
+        host.scaled(this.moving, this.resting);
+    }
+
+    /** Mark the chosen filter in each list. */
+    private void showScaling() {
+        ImageFilter m = moving;
+        ImageFilter r = resting;
+        movingChoices.forEach((f, c) -> c.on(f == m));
+        restingChoices.forEach((f, c) -> c.on(f == r));
     }
 
     /** A swatch of what {@code b} shows behind a picture: its colour, or a small checkerboard. */
@@ -641,7 +963,7 @@ public final class PictureViewer {
             arm(IDLE_MS - quiet);
             return;
         }
-        if (keepShown || menuOpen || over.get() != 0) {
+        if (keepShown || open != null || over.get() != 0) {
             return;
         }
         hidden = true;

@@ -35,8 +35,14 @@ view/               the viewer and its parts, on vexelray-gui.
                     pointer rests, and when pinned takes room of its own. Told what to show (Showing); tells
                     the application what the user did (Host). Vexplore shows it in a second window, Pix as its whole
                     window.
+  Lens              how the picture is looked at: zoomed about the pointer, moved, turned to any angle, and held
+                    where it can be seen, springing back with its momentum. Pure, so it is tested without a window.
+  Sharpen           at rest, the part on screen made again from the file's full-size pixels at exactly the size it
+                    is drawn, and laid over the picture. While it moves, the picture is drawn as it was.
   Filmstrip         the neighbours' thumbnails, gliding one square along on a step.
   Tile, Icons       the viewer's controls: one square size, an icon alone, its word the accessible name.
+  MaskIcon          the icon set's own art (vexelray-icons/utility/small), tinted and decoded at the tile's size.
+  Choice            one of a few, as a row of words: the Settings menu's filters.
   SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
   SuiteType         the faces and sizes the parts above draw with.
 ```

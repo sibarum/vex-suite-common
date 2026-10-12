@@ -1,6 +1,7 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
+import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;
@@ -52,6 +53,9 @@ public final class Tile {
     private final Node glyph;
     private final Node label;
     private volatile Icons icon;
+    /** The icon set's art, drawn in place of {@link #icon}, and what it is uploaded with; null for a stroke icon. */
+    private final MaskIcon mask;
+    private final Textures textures;
 
     private volatile boolean enabled = true;
     private volatile boolean on;
@@ -59,9 +63,11 @@ public final class Tile {
     private volatile Runnable onPress = () -> { };
     private volatile float glyphPx;
 
-    private Tile(Gui gui, Icons icon, Node glyph, String word) {
+    private Tile(Gui gui, Icons icon, MaskIcon mask, Textures textures, Node glyph, String word) {
         this.gui = gui;
         this.icon = icon;
+        this.mask = mask;
+        this.textures = textures;
         this.glyph = glyph.hitInert(true);
         this.label = gui.text(word).font(SuiteType.UI).textSize(SuiteType.SMALL).wordWrap(false).hitInert(true)
                 .visible(false);
@@ -77,7 +83,7 @@ public final class Tile {
         });
         gui.claim(node, ENTER, ClaimScope.FOCUSED, this::activate);
         gui.claim(node, SPACE, ClaimScope.FOCUSED, this::activate);
-        if (icon != null) {
+        if (icon != null || mask != null) {
             gui.onResize(this.glyph, box -> {
                 glyphPx = box.rect().w();
                 paint();
@@ -88,12 +94,21 @@ public final class Tile {
 
     /** A tile showing {@code icon}, named {@code word}. */
     public static Tile of(Gui gui, Icons icon, String word) {
-        return new Tile(gui, icon, gui.box().size(GLYPH, GLYPH), word);
+        return new Tile(gui, icon, null, null, gui.box().size(GLYPH, GLYPH), word);
+    }
+
+    /**
+     * A tile showing one of the icon set's own icons, named {@code word}, recoloured with the tile's state like a
+     * stroke icon. It is decoded at the glyph's size and uploaded with {@code textures}, so it shows once they are
+     * bound to a window.
+     */
+    static Tile of(Gui gui, Textures textures, MaskIcon icon, String word) {
+        return new Tile(gui, null, icon, textures, gui.box().size(GLYPH, GLYPH), word);
     }
 
     /** A tile showing a node of the caller's, named {@code word}: a swatch, a reading. It is not recoloured. */
     public static Tile of(Gui gui, Node glyph, String word) {
-        return new Tile(gui, null, glyph, word);
+        return new Tile(gui, null, null, null, glyph, word);
     }
 
     /** The glyph size, for a caller drawing its own. */
@@ -180,7 +195,9 @@ public final class Tile {
                 .elevation(enabled ? theme.elevation(Relief.RAISED, s) : Length.ZERO);
         label.textColor(word);
         float px = glyphPx;
-        if (icon != null && px > 0f) {
+        if (mask != null && px > 0f) {
+            mask.draw(glyph, textures, Math.round(px), ink);
+        } else if (icon != null && px > 0f) {
             glyph.picture(icon.sketch(px, ink).picture());
         }
     }
