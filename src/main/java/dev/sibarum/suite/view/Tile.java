@@ -1,8 +1,8 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
-import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
+import dev.vexelray.gui.core.IconSource;
 import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;
 import dev.vexelray.gui.core.input.CursorShape;
@@ -14,6 +14,7 @@ import dev.vexelray.gui.core.layout.Length;
 import dev.vexelray.gui.core.style.Relief;
 import dev.vexelray.gui.core.style.Role;
 import dev.vexelray.gui.core.style.Theme;
+import dev.vexelray.gui.icons.IconView;
 import sibarum.tactroller.api.Key;
 
 /**
@@ -52,22 +53,17 @@ public final class Tile {
     private final Node node;
     private final Node glyph;
     private final Node label;
-    private volatile Icons icon;
-    /** The icon set's art, drawn in place of {@link #icon}, and what it is uploaded with; null for a stroke icon. */
-    private final MaskIcon mask;
-    private final Textures textures;
+    /** The icon, a cell of the icon atlas; null for a glyph of the caller's own. */
+    private final IconView icon;
 
     private volatile boolean enabled = true;
     private volatile boolean on;
     private volatile InteractionState state = InteractionState.NORMAL;
     private volatile Runnable onPress = () -> { };
-    private volatile float glyphPx;
 
-    private Tile(Gui gui, Icons icon, MaskIcon mask, Textures textures, Node glyph, String word) {
+    private Tile(Gui gui, IconView icon, Node glyph, String word) {
         this.gui = gui;
         this.icon = icon;
-        this.mask = mask;
-        this.textures = textures;
         this.glyph = glyph.hitInert(true);
         this.label = gui.text(word).font(SuiteType.UI).textSize(SuiteType.SMALL).wordWrap(false).hitInert(true)
                 .visible(false);
@@ -83,32 +79,18 @@ public final class Tile {
         });
         gui.claim(node, ENTER, ClaimScope.FOCUSED, this::activate);
         gui.claim(node, SPACE, ClaimScope.FOCUSED, this::activate);
-        if (icon != null || mask != null) {
-            gui.onResize(this.glyph, box -> {
-                glyphPx = box.rect().w();
-                paint();
-            });
-        }
         paint();
     }
 
-    /** A tile showing {@code icon}, named {@code word}. */
-    public static Tile of(Gui gui, Icons icon, String word) {
-        return new Tile(gui, icon, null, null, gui.box().size(GLYPH, GLYPH), word);
-    }
-
-    /**
-     * A tile showing one of the icon set's own icons, named {@code word}, recoloured with the tile's state like a
-     * stroke icon. It is decoded at the glyph's size and uploaded with {@code textures}, so it shows once they are
-     * bound to a window.
-     */
-    static Tile of(Gui gui, Textures textures, MaskIcon icon, String word) {
-        return new Tile(gui, null, icon, textures, gui.box().size(GLYPH, GLYPH), word);
+    /** A tile showing {@code icon}, named {@code word}, recoloured with the tile's state. */
+    public static Tile of(Gui gui, IconSource icon, String word) {
+        IconView view = IconView.of(gui, icon).size(GLYPH);
+        return new Tile(gui, view, view.node(), word);
     }
 
     /** A tile showing a node of the caller's, named {@code word}: a swatch, a reading. It is not recoloured. */
     public static Tile of(Gui gui, Node glyph, String word) {
-        return new Tile(gui, null, null, null, glyph, word);
+        return new Tile(gui, null, glyph, word);
     }
 
     /** The glyph size, for a caller drawing its own. */
@@ -126,9 +108,8 @@ public final class Tile {
     }
 
     /** Draw {@code value} in place of the icon: a state shown in the icon as well as the fill. Not for a node glyph. */
-    public Tile icon(Icons value) {
-        icon = value;
-        paint();
+    public Tile icon(IconSource value) {
+        icon.icon(value);
         return this;
     }
 
@@ -194,14 +175,10 @@ public final class Tile {
         node.background(glass(fill)).border(Length.dp(1), edge).lit(enabled)
                 .elevation(enabled ? theme.elevation(Relief.RAISED, s) : Length.ZERO);
         label.textColor(word);
-        float px = glyphPx;
-        if (mask != null) {
-            // A field: on, it glows in its ink; under the pointer, it lifts off its own shadow.
-            float glow = enabled && on ? px * 0.16f : 0f;
-            float shadow = enabled && !on && s != InteractionState.NORMAL ? px * 0.07f : 0f;
-            mask.draw(glyph, textures, ink, glow, shadow);
-        } else if (icon != null && px > 0f) {
-            glyph.picture(icon.sketch(px, ink).picture());
+        if (icon != null) {
+            // On, it glows in its ink; under the pointer, it lifts off its own shadow.
+            icon.tint(ink).glow(enabled && on ? 0.16f : 0f)
+                    .shadow(enabled && !on && s != InteractionState.NORMAL ? 0.07f : 0f);
         }
     }
 }

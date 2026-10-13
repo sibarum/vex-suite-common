@@ -22,6 +22,8 @@ import dev.vexelray.gui.core.layout.NodeLayout;
 import dev.vexelray.gui.core.style.Relief;
 import dev.vexelray.gui.core.style.Role;
 import dev.vexelray.gui.core.style.Theme;
+import dev.vexelray.gui.icons.Icon;
+import dev.vexelray.gui.icons.IconView;
 import dev.vexelray.gui.krono.KronoGui;
 import dev.vexelray.gui.krono.Scheduled;
 import dev.vexelray.gui.widget.TitleBar;
@@ -284,12 +286,12 @@ public final class PictureViewer {
         gui.landmark(landmarks + INFO, info);
         gui.landmark(landmarks + COUNT, count);
 
-        Tile close = Tile.of(gui, Icons.CLOSE, "Close").onPress(host::close);
-        this.prev = Tile.of(gui, Icons.PREVIOUS, "Previous").onPress(() -> host.step(-1));
-        this.next = Tile.of(gui, Icons.NEXT, "Next").onPress(() -> host.step(1));
-        this.background = Tile.of(gui, Icons.BACKGROUND, "Background").toggle().onPress(this::toggleBackdrop);
-        this.settings = Tile.of(gui, textures, MaskIcon.SETTINGS, "Settings").toggle().onPress(this::toggleSettings);
-        this.keep = Tile.of(gui, Icons.PIN, "Keep shown").toggle().onPress(this::toggleKeep);
+        Tile close = Tile.of(gui, Icon.CLOSE, "Close").onPress(host::close);
+        this.prev = Tile.of(gui, Icon.CHEVRON_LEFT, "Previous").onPress(() -> host.step(-1));
+        this.next = Tile.of(gui, Icon.CHEVRON_RIGHT, "Next").onPress(() -> host.step(1));
+        this.background = Tile.of(gui, Icon.PALETTE, "Background").toggle().onPress(this::toggleBackdrop);
+        this.settings = Tile.of(gui, Icon.SETTINGS, "Settings").toggle().onPress(this::toggleSettings);
+        this.keep = Tile.of(gui, Icon.PIN_UP, "Keep shown").toggle().onPress(this::toggleKeep);
         gui.landmark(landmarks + CLOSE, close.node());
         gui.landmark(landmarks + PREVIOUS, prev.node());
         gui.landmark(landmarks + NEXT, next.node());
@@ -341,14 +343,14 @@ public final class PictureViewer {
 
         // Settings: how the picture is scaled, moving and at rest, side by side, the same filters in each.
         Node movingList = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f))
-                .scroll(false, false).children(heading(textures, MaskIcon.QUALITY_LOW, "WHILE MOVING"));
+                .scroll(false, false).children(heading(Icon.QUALITY_LOW, "WHILE MOVING"));
         Node restingList = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f))
-                .scroll(false, false).children(heading(textures, MaskIcon.QUALITY_HIGH, "AT REST"));
+                .scroll(false, false).children(heading(Icon.QUALITY_HIGH, "AT REST"));
         for (ImageFilter f : ImageFilter.values()) {
             String id = f.name().toLowerCase(Locale.ROOT).replace('_', '-');
-            MaskIcon icon = MaskIcon.of(f);
-            Choice m = new Choice(gui, textures, icon, f.label(), () -> chooseScaling(f, null));
-            Choice r = new Choice(gui, textures, icon, f.label(), () -> chooseScaling(null, f));
+            Icon icon = icon(f);
+            Choice m = new Choice(gui, icon, f.label(), () -> chooseScaling(f, null));
+            Choice r = new Choice(gui, icon, f.label(), () -> chooseScaling(null, f));
             gui.landmark(landmarks + MOVING + id, m.node());
             gui.landmark(landmarks + RESTING + id, r.node());
             movingChoices.put(f, m);
@@ -899,13 +901,26 @@ public final class PictureViewer {
         host.scaled(this.moving, this.resting);
     }
 
-    /** A list's heading: its icon, drawn as a field in the caption's colour, and its words. */
-    private Node heading(Textures textures, MaskIcon icon, String words) {
-        Node glyph = gui.box().size(Length.rem(1.125f), Length.rem(1.125f)).hitInert(true);
-        gui.onResize(glyph, box -> icon.draw(glyph, textures, gui.theme().color(Role.DIM), 0f, 0f));
+    /** A list's heading: its icon, in the caption's colour, and its words. */
+    private Node heading(Icon icon, String words) {
+        Node glyph = IconView.of(gui, icon).size(Length.rem(1.125f)).tint(Role.DIM).node().hitInert(true);
         return gui.row().width(Length.AUTO).height(Length.AUTO).alignItems(AlignItems.CENTER).gap(Length.rem(0.5f))
                 .padding(Length.rem(0.25f), Length.rem(0.625f)).scroll(false, false)
                 .children(glyph, text(words, SuiteType.SMALL, Role.DIM, SuiteType.UI));
+    }
+
+    /** The icon set's drawing of how {@code filter} scales: its kernel. */
+    static Icon icon(ImageFilter filter) {
+        return switch (filter) {
+            case NEAREST -> Icon.FILTER_NEAREST;
+            case SHARP_BILINEAR -> Icon.FILTER_SHARP_BILINEAR;
+            case BILINEAR -> Icon.FILTER_BILINEAR;
+            case GAUSSIAN -> Icon.FILTER_GAUSSIAN;
+            case NORMAL -> Icon.FILTER_NORMAL;
+            case B_SPLINE -> Icon.FILTER_BSPLINE;
+            case MITCHELL -> Icon.FILTER_MITCHELL;
+            case LANCZOS -> Icon.FILTER_LANCZOS;
+        };
     }
 
     /** Mark the chosen filter in each list. */
@@ -937,7 +952,7 @@ public final class PictureViewer {
 
     private void toggleKeep() {
         keepShown = !keepShown;
-        keep.icon(keepShown ? Icons.PINNED : Icons.PIN).on(keepShown);
+        keep.icon(keepShown ? Icon.PIN_DOWN : Icon.PIN_UP).on(keepShown);
         dock();
         stir();
     }

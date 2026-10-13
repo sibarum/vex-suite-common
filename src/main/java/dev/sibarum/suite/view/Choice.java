@@ -1,7 +1,6 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
-import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;
@@ -13,6 +12,8 @@ import dev.vexelray.gui.core.layout.Length;
 import dev.vexelray.gui.core.style.Relief;
 import dev.vexelray.gui.core.style.Role;
 import dev.vexelray.gui.core.style.Theme;
+import dev.vexelray.gui.icons.Icon;
+import dev.vexelray.gui.icons.IconView;
 import sibarum.tactroller.api.Key;
 
 /**
@@ -35,27 +36,18 @@ final class Choice {
     private final Gui gui;
     private final Node node;
     private final Node words;
-    private final Node glyph;
-    private final Textures textures;
-    private final MaskIcon icon;
-    private volatile float iconPx;
+    private final IconView icon;
     private volatile boolean on;
     private volatile InteractionState state = InteractionState.NORMAL;
 
-    /** A choice named {@code label}, after {@code icon} drawn as a field, or with the icon's room left empty for null. */
-    Choice(Gui gui, Textures textures, MaskIcon icon, String label, Runnable onPress) {
+    /** A choice named {@code label}, after {@code icon}, or with the icon's room left empty for null. */
+    Choice(Gui gui, Icon icon, String label, Runnable onPress) {
         this.gui = gui;
-        this.textures = textures;
-        this.icon = icon;
+        this.icon = IconView.of(gui, icon).size(ICON);
         this.words = gui.text(label).font(SuiteType.UI).textSize(SuiteType.BODY).wordWrap(false).hitInert(true);
-        this.glyph = gui.box().size(ICON, ICON).hitInert(true);
         this.node = gui.row().role("radio").width(Length.FILL).height(Length.AUTO).alignItems(AlignItems.CENTER)
                 .gap(Length.rem(0.5f)).padding(Length.rem(0.3125f), Length.rem(0.625f)).corner(CORNER)
-                .scroll(false, false).children(glyph, words);
-        gui.onResize(glyph, box -> {
-            iconPx = box.rect().w();
-            paint();
-        });
+                .scroll(false, false).children(this.icon.node().hitInert(true), words);
         gui.focusable(node, true);
         gui.cursor(node, CursorShape.POINTER);
         gui.onClick(node, onPress);
@@ -96,10 +88,7 @@ final class Choice {
             ink = theme.color(lit ? Role.INK : SuiteLook.TEXT);
         }
         words.textColor(ink);
-        if (icon != null) {
-            // The chosen one glows in its ink; under the pointer, an icon lifts off its own shadow.
-            float px = iconPx;
-            icon.draw(glyph, textures, ink, on ? px * 0.2f : 0f, !on && lit ? px * 0.08f : 0f);
-        }
+        // The chosen one glows in its ink; under the pointer, an icon lifts off its own shadow.
+        icon.tint(ink).glow(on ? 0.2f : 0f).shadow(!on && lit ? 0.08f : 0f);
     }
 }
