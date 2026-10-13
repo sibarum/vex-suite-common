@@ -1,9 +1,10 @@
 package dev.sibarum.suite.view;
 
-import dev.vexelray.canvas.FieldStyle;
+import dev.vexelray.canvas.Color;
 import dev.vexelray.canvas.ImageFilter;
 import dev.vexelray.codec.image.MaskField;
 import dev.vexelray.codec.image.gui.Textures;
+import dev.vexelray.gui.core.ImageField;
 import dev.vexelray.gui.core.Node;
 
 import java.io.IOException;
@@ -16,8 +17,8 @@ import java.util.Locale;
  * here, these are the icon set's own art.
  *
  * <p>Drawn as a signed distance field ({@link MaskField}, vexelray-canvas's {@code DistanceField} of the mask): made
- * once from the mask, uploaded once, and then any size and any colour, with a glow or a soft shadow from the shader ({@link FieldStyle}), for nothing more. A state that
- * changes an icon's colour or effect changes four numbers, not a texture.
+ * once from the mask, uploaded once, and then any size and any colour, with a glow or a soft shadow from the shader,
+ * for nothing more. A state that changes an icon's colour or effect changes four numbers, not a texture.
  */
 enum MaskIcon {
 
@@ -58,12 +59,14 @@ enum MaskIcon {
     }
 
     /**
-     * Show this icon across {@code glyph} drawn with {@code style}. False if it cannot be drawn: no window to upload
-     * into yet, or the mask does not rasterise; the control is still a control.
+     * Show this icon across {@code glyph} in {@code tint}, with a glow reaching {@code glow} px and a shadow
+     * {@code shadow} px soft (0 for none; see {@link ImageField#effects(float, float)}). False if it cannot be drawn: no
+     * window to upload into yet, or the mask does not rasterise; the control is still a control.
      */
-    boolean draw(Node glyph, Textures textures, FieldStyle style) {
+    boolean draw(Node glyph, Textures textures, Color tint, float glow, float shadow) {
         MaskField f = field();
-        return f != null && textures.showData(f.picture(), t -> glyph.field(t, f.side(), f.spread(), style));
+        return f != null && textures.showData(f.picture(),
+                t -> glyph.field(new ImageField(t, f.side(), f.spread(), tint).effects(glow, shadow)));
     }
 
     /** The field, made the first time it is asked for. */

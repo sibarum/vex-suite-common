@@ -1,7 +1,6 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
-import dev.vexelray.canvas.FieldStyle;
 import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
@@ -100,7 +99,7 @@ final class Choice {
         if (icon != null) {
             // The chosen one glows in its ink; under the pointer, an icon lifts off its own shadow.
             float px = iconPx;
-            icon.draw(glyph, textures, new FieldStyle(ink, on ? px * 0.2f : 0f, !on && lit ? px * 0.08f : 0f));
+            icon.draw(glyph, textures, ink, on ? px * 0.2f : 0f, !on && lit ? px * 0.08f : 0f);
         }
     }
 }

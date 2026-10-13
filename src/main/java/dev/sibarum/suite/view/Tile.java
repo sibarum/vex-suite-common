@@ -1,7 +1,6 @@
 package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
-import dev.vexelray.canvas.FieldStyle;
 import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
@@ -200,7 +199,7 @@ public final class Tile {
             // A field: on, it glows in its ink; under the pointer, it lifts off its own shadow.
             float glow = enabled && on ? px * 0.16f : 0f;
             float shadow = enabled && !on && s != InteractionState.NORMAL ? px * 0.07f : 0f;
-            mask.draw(glyph, textures, new FieldStyle(ink, glow, shadow));
+            mask.draw(glyph, textures, ink, glow, shadow);
         } else if (icon != null && px > 0f) {
             glyph.picture(icon.sketch(px, ink).picture());
         }
