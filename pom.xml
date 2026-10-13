@@ -6,7 +6,7 @@
 
     <groupId>dev.sibarum</groupId>
     <artifactId>vex-suite-common</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1-SNAPSHOT</version>
 
     <name>vex-suite-common</name>
     <description>
@@ -18,10 +18,10 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <vexelray-gui.version>0.1.0</vexelray-gui.version>
-        <tactroller.version>1.0</tactroller.version>
-        <atchung.version>1.0</atchung.version>
-        <vexelray-codec.version>0.1.0</vexelray-codec.version>
+        <vexelray-gui.version>0.1.1-SNAPSHOT</vexelray-gui.version>
+        <tactroller.version>1.1-SNAPSHOT</tactroller.version>
+        <atchung.version>1.1-SNAPSHOT</atchung.version>
+        <vexelray-codec.version>0.1.1-SNAPSHOT</vexelray-codec.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
