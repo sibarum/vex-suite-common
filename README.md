@@ -29,6 +29,17 @@ git/                the git executable, run as a process. No GUI. Blocking: call
                     list asks of it, at(file) and inside(folder). Case-blind where the platform is.
   Porcelain         reads `git status --porcelain=v2 -z --branch`. Pure, so it is tested without git.
 
+update/             updating an installed application from inside it, through vexelray-installer. No GUI. Blocking.
+  Install           what the installer's record (%LOCALAPPDATA%\vexelray-installer\installs\<id>.json) says: the
+                    version, the install folder, the published manifest's URL, the executable. running() is whether
+                    this process is that executable; a build from source is not, and is never offered updates.
+  Release           the latest release in a published manifest.json: its version, notes and download size. Pure.
+  Versions          which version is newer, exactly as the installer's update.ps1 decides it.
+  Updates           check() fetches the manifest; restart(args) starts a hidden script that waits for the
+                    application to exit, runs the installed update.ps1 -Yes (which hash-checks everything it
+                    downloads), and starts the application again, on the old version if the update failed;
+                    outcome() is how that went, read once on the next start.
+
 view/               the viewer and its parts, on vexelray-gui.
   PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
                     opens), Previous, the filmstrip, Next, Background and Keep shown, which fades when the
@@ -45,7 +56,19 @@ view/               the viewer and its parts, on vexelray-gui.
   Choice            one of a few, as a row of words: the Settings menu's filters.
   SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
   SuiteType         the faces and sizes the parts above draw with.
+  UpdateNotice      the word about updates, floating in the window's top right: "Pix 0.2.0 is available" with
+                    Update and restart and Later, or after an update whether it took. Silent otherwise, offline too.
 ```
+
+## Updates
+
+Each application, when it is the installed copy, makes an `UpdateNotice` from `Updates.of(Apps.registryDir(), id)`,
+appends it to its root and starts it: Pix in `Recipes.updates`, reopening the picture shown; Vexplore in
+`Recipes.updates`, reopening the folder. The check is one GET of the manifest each start. To see it without
+publishing anything, point `INSTALL_REGISTRY_DIR` at a folder holding a record whose command is the `java.exe` that
+`exec:exec` runs, whose `manifestUrl` is a manifest on a local server (`jwebserver`) naming a higher `latest`, and whose
+`installDir` has an `update.ps1` of your own. Drive it by `--port`, not `--launch`: ottermate stops the launched process
+tree when the application exits, and that tree includes the updater it handed over to.
 
 What stays in each application is what is different about it: Vexplore's viewer is a second window that steps by
 moving the explorer's selection, and its dock's preview ladder has text and bytes below the picture; Pix's is the
