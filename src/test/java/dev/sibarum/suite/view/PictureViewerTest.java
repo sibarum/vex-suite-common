@@ -19,6 +19,13 @@ class PictureViewerTest {
     private static final List<Path> PICTURES = List.of(A, B, C);
 
     @Test
+    void theClockSaysMinutesSecondsAndTenths() {
+        assertEquals("0:00.0 / 0:04.0", PictureViewer.clockText(0, 4_000));
+        assertEquals("0:01.2 / 1:05.9", PictureViewer.clockText(1_250, 65_999));
+        assertEquals("12:00.0 / 0:00.0", PictureViewer.clockText(720_000, -5));
+    }
+
+    @Test
     void stepsStopAtTheEnds() {
         assertEquals(B, PictureViewer.target(PICTURES, A, 1));
         assertEquals(A, PictureViewer.target(PICTURES, A, -1), "no wrap: the first stays the first");

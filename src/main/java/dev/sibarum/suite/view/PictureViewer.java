@@ -5,6 +5,7 @@ import dev.vexelray.canvas.ImageFilter;
 import dev.vexelray.codec.image.Picture;
 import dev.vexelray.codec.image.gui.ImageView;
 import dev.vexelray.codec.image.gui.ImageView.Backdrop;
+import dev.vexelray.codec.image.gui.Playback;
 import dev.vexelray.codec.image.gui.Textures;
 import dev.vexelray.gui.core.Gui;
 import dev.vexelray.gui.core.Node;
@@ -26,6 +27,7 @@ import dev.vexelray.gui.icons.Icon;
 import dev.vexelray.gui.icons.IconView;
 import dev.vexelray.gui.krono.KronoGui;
 import dev.vexelray.gui.krono.Scheduled;
+import dev.vexelray.gui.widget.Slider;
 import dev.vexelray.gui.widget.TitleBar;
 import sibarum.kronometer.Dur;
 import sibarum.kronometer.Time;
@@ -41,6 +43,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -86,7 +89,13 @@ import java.util.function.Function;
  * <p>Landmarks, each with the prefix given to the constructor: {@link #NAME}, {@link #INFO}, {@link #COUNT} (written at
  * once on every step, so scripts await them), the tiles {@link #CLOSE}, {@link #OPEN}, {@link #PREVIOUS}, {@link #NEXT},
  * {@link #BACKGROUND}, {@link #SETTINGS}, {@link #KEEP}, the backdrop swatches {@link #BACKDROP}{@code checker} and so
- * on, and the scaling choices {@link #MOVING}{@code lanczos} and {@link #RESTING}{@code lanczos} and so on.
+ * on, the scaling choices {@link #MOVING}{@code lanczos} and {@link #RESTING}{@code lanczos} and so on, and the
+ * transport's {@link #PLAY}, {@link #FRAME_BACK}, {@link #FRAME_ON}, {@link #SEEK}, {@link #POSITION} and {@link #LOOP}.
+ *
+ * <p><b>A picture that plays is played like a movie</b> ({@code Playback}): a transport floats above the bar while it
+ * is up, with play and pause, a frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with
+ * the bar. Space plays and pauses, comma and period step a frame, with Shift a second, and L turns looping on and off.
+ * It plays as soon as it is shown, round and round, and holds while the window is not focused.
  *
  * <p><b>Settings</b> (the gear) opens a menu of how the picture is scaled: while it moves, by the GPU every frame from
  * its texture, and at rest, made again from the file's own pixels (see {@code Sharpen}). The same filters in each, from
@@ -156,6 +165,16 @@ public final class PictureViewer {
     public static final String SETTINGS = "settings";
     public static final String MOVING = "moving.";
     public static final String RESTING = "resting.";
+    /** The transport, shown while the picture plays: play and pause, a frame back and on, the seek bar, the clock,
+     *  and loop. */
+    public static final String PLAY = "play";
+    public static final String FRAME_BACK = "frame-back";
+    public static final String FRAME_ON = "frame-on";
+    public static final String SEEK = "seek";
+    public static final String POSITION = "position";
+    public static final String LOOP = "loop";
+    /** How far Shift with comma or period moves the clock, in ms. */
+    static final long JUMP_MS = 1000;
 
     /** How long the pointer rests before the controls fade, and how long the fade takes. */
     public static final int IDLE_MS = 1200;
@@ -209,6 +228,13 @@ public final class PictureViewer {
     /** Where Previous and Next go when the bar has no room for them: the window's left and right edges. */
     private final Node leftSide;
     private final Node rightSide;
+    /** The transport over the picture, above the bar, while the picture plays; and what it is made of. */
+    private final Node transport;
+    private final Node transportLift;
+    private final Tile play;
+    private final Tile loop;
+    private final Slider seek;
+    private final Node clock;
     /** Everything that fades: the bar, and the two sides. */
     private final List<Node> chrome;
     private final Node stage;
@@ -322,7 +348,32 @@ public final class PictureViewer {
         gui.onResize(controls, this::refit);
         this.leftSide = side(Length.ZERO);
         this.rightSide = side(Length.percent(100f));
-        this.chrome = List.of(controls, leftSide, rightSide);
+
+        // The transport: shown only while the picture in front plays, above the bar, fading with it.
+        this.play = Tile.of(gui, Icon.PLAY, "Play").onPress(() -> playback(Playback::toggle));
+        Tile back = Tile.of(gui, Icon.STEP_BACK, "Previous frame").onPress(() -> playback(p -> p.step(-1)));
+        Tile on = Tile.of(gui, Icon.STEP, "Next frame").onPress(() -> playback(p -> p.step(1)));
+        this.loop = Tile.of(gui, Icon.REFRESH, "Loop").toggle().on(true)
+                .onPress(() -> playback(p -> p.loop(!p.loop())));
+        // A scrubber, not an edit: dragging it seeks as it goes, and nothing about it is undone.
+        this.seek = new Slider(gui, 0f).undoable(false)
+                .onChange(v -> playback(p -> p.seek(Math.round(v * p.duration()))));
+        seek.node().width(Length.rem(16f));
+        this.clock = text(clockText(0, 0), SuiteType.SMALL, SuiteLook.TEXT, SuiteType.MONO);
+        gui.landmark(landmarks + PLAY, play.node());
+        gui.landmark(landmarks + FRAME_BACK, back.node());
+        gui.landmark(landmarks + FRAME_ON, on.node());
+        gui.landmark(landmarks + SEEK, seek.node());
+        gui.landmark(landmarks + POSITION, clock);
+        gui.landmark(landmarks + LOOP, loop.node());
+        Node deck = slab(gui.row()).alignItems(AlignItems.CENTER)
+                .children(back.node(), play.node(), on.node(), seek.node(), clock, loop.node());
+        this.transportLift = gui.box().size(Length.dp(1), BAR_ROOM);
+        this.transport = gui.column().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
+                .padding(MARGIN).scroll(false, false).floatAt(Length.ZERO, Length.percent(100f)).visible(false)
+                .children(deck, transportLift);
+
+        this.chrome = List.of(controls, leftSide, rightSide, transport);
         for (int i = 0; i < chrome.size(); i++) {
             int bit = 1 << i;
             gui.onState(chrome.get(i), s -> over.getAndUpdate(o -> s == InteractionState.NORMAL ? o & ~bit : o | bit));
@@ -373,8 +424,9 @@ public final class PictureViewer {
         gui.onDragUi(image.node(), this::drag);
         gui.onDoubleClick(image.node(), () -> look(Lens::fit));
         image.onFit(() -> look(l -> l.measure(image.fitted())));
+        image.onPlayback(this::showTransport);
         this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
-                .children(image.node(), leftSide, rightSide, backdropMenu.node(), settingsMenu.node());
+                .children(image.node(), leftSide, rightSide, transport, backdropMenu.node(), settingsMenu.node());
         gui.root().direction(Direction.COLUMN).children(bar.node(), stage, controls);
         dock();
         gui.onResize(gui.root(), box -> {
@@ -398,6 +450,13 @@ public final class PictureViewer {
         });
         gui.shortcut(Key.R, () -> look(l -> l.quarter(1)));
         gui.shortcut(Key.R, () -> look(l -> l.quarter(-1)), Modifier.SHIFT);
+        // A picture that plays: Space plays and pauses, comma and period step a frame, with Shift a second, L loops.
+        gui.shortcut(Key.SPACE, () -> playback(Playback::toggle));
+        gui.shortcut(Key.COMMA, () -> playback(p -> p.step(-1)));
+        gui.shortcut(Key.PERIOD, () -> playback(p -> p.step(1)));
+        gui.shortcut(Key.COMMA, () -> playback(p -> p.seek(p.position() - JUMP_MS)), Modifier.SHIFT);
+        gui.shortcut(Key.PERIOD, () -> playback(p -> p.seek(p.position() + JUMP_MS)), Modifier.SHIFT);
+        gui.shortcut(Key.L, () -> playback(p -> p.loop(!p.loop())));
 
         // The framework has no per-node pointer-move hook, so the bar's idle fade reads input off the bus; and no
         // per-node wheel hook, so the wheel over the picture is read there too.
@@ -631,10 +690,14 @@ public final class PictureViewer {
         boolean pinned = keepShown;
         if (pinned) {
             controls.unfloat();
+            // Pinned, the transport takes room of its own under the picture, as the bar does under the stage.
+            transport.unfloat();
         } else {
             controls.floatAt(Length.ZERO, Length.percent(100f));
+            transport.floatAt(Length.ZERO, Length.percent(100f));
         }
         stage.padding(Length.ZERO, pinned && arrowsAtSides ? SIDE_ROOM : Length.ZERO);
+        transportLift.visible(!pinned);
         backdropMenu.lift().visible(!pinned);
         settingsMenu.lift().visible(!pinned);
     }
@@ -1021,6 +1084,43 @@ public final class PictureViewer {
      * The words as a button that runs {@code action}: a click anywhere on them, or Enter or Space while focused, and
      * {@link Tile}'s shading on hover and press. At rest it is bare, so the words read as they do when not a button.
      */
+    /** Do {@code act} to the picture's playing, if the picture in front plays. */
+    private void playback(Consumer<Playback> act) {
+        Playback p = image.playback();
+        if (p != null) {
+            act.accept(p);
+            stir();
+        }
+    }
+
+    /**
+     * Show the transport as the picture's playing has it, or hide it when the picture does not play. Called whenever
+     * the playing moves, a frame at a time, so it only writes.
+     */
+    private void showTransport() {
+        Playback p = image.playback();
+        transport.visible(p != null && active);
+        if (p == null) {
+            return;
+        }
+        play.icon(p.wanted() ? Icon.PAUSE : Icon.PLAY);
+        loop.on(p.loop());
+        long d = p.duration();
+        long at = Math.min(p.position(), d);
+        seek.show(d > 0 ? (float) at / d : 0f);
+        clock.text(clockText(at, d) + "  " + (Math.max(0, p.frame()) + 1) + "/" + p.count());
+    }
+
+    /** "0:01.2 / 0:04.0": where the clock is, and how long a pass is. */
+    static String clockText(long at, long duration) {
+        return time(at) + " / " + time(duration);
+    }
+
+    private static String time(long ms) {
+        long tenths = Math.max(0, ms) / 100;
+        return String.format(Locale.ROOT, "%d:%02d.%d", tenths / 600, tenths / 10 % 60, tenths % 10);
+    }
+
     private void button(Node words, Runnable action) {
         name.hitInert(true);
         info.hitInert(true);

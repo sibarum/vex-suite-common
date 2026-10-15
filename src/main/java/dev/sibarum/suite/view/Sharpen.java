@@ -48,11 +48,11 @@ final class Sharpen {
 
     /**
      * Make {@code of}, the picture of {@code path} that is up, again where {@code visible} says the stage shows it
-     * ({@link Lens#visible}), from the file's own pixels scaled with {@code filter}. Nothing for an animation, whose
-     * frames are shown as they come.
+     * ({@link Lens#visible}), from the file's own pixels scaled with {@code filter}. Nothing for a picture that moves,
+     * whose frames are shown as they come: a part made sharper from one frame would lie over every other.
      */
     void request(Path path, Picture of, float[] visible, ImageFilter filter) {
-        if (path == null || of == null || of.animated() || visible == null || filter == null) {
+        if (path == null || of == null || of.moves() || visible == null || filter == null) {
             return;
         }
         float w = visible[4];
