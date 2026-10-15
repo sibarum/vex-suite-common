@@ -1,4 +1,10 @@
 {
+  "comment": [
+    "The foreign downcalls this jar makes, by shape: update/Windows' user32 calls, and tty/ConPty's kernel32 calls",
+    "(CreatePipe, CreatePseudoConsole, ResizePseudoConsole, ClosePseudoConsole, the process-thread attribute list,",
+    "CreateProcessW, ReadFile, WriteFile, CloseHandle, WaitForSingleObject, GetExitCodeProcess, TerminateProcess,",
+    "SetConsoleCtrlHandler)."
+  ],
   "foreign": {
     "downcalls": [
       { "returnType": "void*", "parameterTypes": ["void*"] },
@@ -6,7 +12,14 @@
       { "returnType": "jint", "parameterTypes": ["void*", "void*"] },
       { "returnType": "jint", "parameterTypes": ["void*"] },
       { "returnType": "jint", "parameterTypes": ["void*", "jint"] },
-      { "returnType": "jint", "parameterTypes": ["void*", "jint", "jlong", "jlong"] }
+      { "returnType": "jint", "parameterTypes": ["void*", "jint", "jlong", "jlong"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "void*", "jint"] },
+      { "returnType": "jint", "parameterTypes": ["jint", "void*", "void*", "jint", "void*"] },
+      { "returnType": "void", "parameterTypes": ["void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "jint", "jint", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "jint", "jlong", "void*", "jlong", "void*", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "void*", "void*", "jint", "jint", "void*", "void*", "void*", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "jint", "void*", "void*"] }
     ]
   }
 }

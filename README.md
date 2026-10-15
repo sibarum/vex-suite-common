@@ -1,8 +1,11 @@
 # vex-suite-common
 
-What [Vexplore](../vexplore) and [Pix](../Pix) share: the sizes pictures are decoded at, the image viewer's
-tree and its parts, the palette they are drawn in, and git's view of a folder. A library, not an application; both apps depend on it, so a
-change here is a change to both.
+What the suite's applications share: for [Vexplore](../vexplore) and [Pix](../Pix), the sizes pictures are decoded
+at, the image viewer's tree and its parts, the palette they are drawn in, and git's view of a folder; for
+[MainFrame](../mainframe) and [Vex](../text-editor-vexel-demo), a terminal. A library, not an application; each app
+depends on it, so a change here is a change to all of them.
+
+MainFrame and Vex use only `tty/` and exclude `vexelray-codec-image` from it, so neither carries the picture decoder.
 
 ```
 mvn install        # build, test, and put it in the local Maven repository, before either app builds
@@ -48,6 +51,17 @@ update/             updating the installed suite from inside one of its applicat
                     is ever forced. While one stays open the user can show it, skip it or cancel.
   Windows           the user32 calls behind that: WM_CLOSE posted to a process's main windows, and bringing one
                     to the front.
+
+tty/                a terminal: a program on a pseudoconsole, its output as a screen, and the screen on a node.
+  ConPty            a child process attached to a Windows pseudoconsole, through kernel32 by the foreign function
+                    API. Output is VT sequences; input is keys as VT/UTF-8. Ends its output stream when the child
+                    exits, which a pseudoconsole on its own never does.
+  Terminal          a VT/xterm screen: a grid of cells, a 10 000-line history, and the parser that edits both from
+                    a program's output. Pure, so it is tested without a window.
+  Pump              a program's output read into a Terminal on a thread of its own, from a pseudoconsole or a pipe.
+  TerminalScreen    a Terminal drawn on a node as a cell grid, fitted to the node, with the history scrolled by the
+                    wheel and a drag selecting. Says what a key or a paste sends; sending it is the owner's.
+  CellArt           box drawing, block elements and braille, drawn as rectangles so a TUI's lines meet.
 
 view/               the viewer and its parts, on vexelray-gui.
   PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
