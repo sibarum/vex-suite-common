@@ -29,16 +29,25 @@ git/                the git executable, run as a process. No GUI. Blocking: call
                     list asks of it, at(file) and inside(folder). Case-blind where the platform is.
   Porcelain         reads `git status --porcelain=v2 -z --branch`. Pure, so it is tested without git.
 
-update/             updating an installed application from inside it, through vexelray-installer. No GUI. Blocking.
+update/             updating the installed suite from inside one of its applications, through vexelray-installer.
+                    No GUI. Blocking.
   Install           what the installer's record (%LOCALAPPDATA%\vexelray-installer\installs\<id>.json) says: the
-                    version, the install folder, the published manifest's URL, the executable. running() is whether
-                    this process is that executable; a build from source is not, and is never offered updates.
+                    version, the publisher, the install folder, the published manifest's URL, the executable.
+                    running() is whether this process is that executable; a build from source is not, and is never
+                    offered updates. processes() are the other processes running it.
   Release           the latest release in a published manifest.json: its version, notes and download size. Pure.
   Versions          which version is newer, exactly as the installer's update.ps1 decides it.
-  Updates           check() fetches the manifest; restart(args) starts a hidden script that waits for the
-                    application to exit, runs the installed update.ps1 -Yes (which hash-checks everything it
-                    downloads), and starts the application again, on the old version if the update failed;
-                    outcome() is how that went, read once on the next start.
+  Updates           suite() is every install of the same publisher; survey() fetches all their manifests at once.
+                    handover(...) starts a hidden script that runs each closed application's update.ps1 -Yes (which
+                    hash-checks everything it downloads) and starts it again if it was open, then waits for this
+                    application to exit and does the same for it, on the old version if an update failed.
+                    outcome() is how that went, application by application, read once. lock() keeps it to one
+                    update at a time across the suite.
+  SuiteUpdate       the closing before the hand-over: each other open application to be updated is asked to close,
+                    one at a time, as its own close button would ask, so it can ask about unsaved changes. Nothing
+                    is ever forced. While one stays open the user can show it, skip it or cancel.
+  Windows           the user32 calls behind that: WM_CLOSE posted to a process's main windows, and bringing one
+                    to the front.
 
 view/               the viewer and its parts, on vexelray-gui.
   PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
@@ -56,15 +65,21 @@ view/               the viewer and its parts, on vexelray-gui.
   Choice            one of a few, as a row of words: the Settings menu's filters.
   SuiteLook         the palette both apps wear, and the tokens the parts above draw with.
   SuiteType         the faces and sizes the parts above draw with.
-  UpdateNotice      the word about updates, floating in the window's top right: "Pix 0.2.0 is available" with
-                    Update and restart and Later, or after an update whether it took. Silent otherwise, offline too.
+  UpdateNotice      the word about updates, floating in the window's top right: "Pix 0.2.0 is available" (or
+                    "3 updates are available") with Update and restart and Later; which application it is closing,
+                    and Show, Skip and Cancel when one stays open; after an update, whether each one took. Silent
+                    otherwise, offline too.
 ```
 
 ## Updates
 
 Each application, when it is the installed copy, makes an `UpdateNotice` from `Updates.of(Apps.registryDir(), id)`,
 appends it to its root and starts it: Pix in `Recipes.updates`, reopening the picture shown; Vexplore in
-`Recipes.updates`, reopening the folder. The check is one GET of the manifest each start. To see it without
+`Recipes.updates`, reopening the folder. The check is one GET of each suite member's manifest each start, in
+parallel, so either application offers every update the suite has, its own or not. Updating closes the other open
+applications that are being updated (each may ask about unsaved changes first; one that stays open can be skipped),
+updates them and opens them again with nothing open, then does the same for this one if it is being updated; if it
+is not, it stays open and reports. Applications that were not open, or have no update, are left alone. To see it without
 publishing anything, point `INSTALL_REGISTRY_DIR` at a folder holding a record whose command is the `java.exe` that
 `exec:exec` runs, whose `manifestUrl` is a manifest on a local server (`jwebserver`) naming a higher `latest`, and whose
 `installDir` has an `update.ps1` of your own. Drive it by `--port`, not `--launch`: ottermate stops the launched process
