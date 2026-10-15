@@ -61,25 +61,27 @@ import java.util.function.Function;
  *
  * <p><b>Every control is a {@link Tile}</b>: one size, an icon alone. They sit in one bar along the bottom, in three
  * groups: Close and what this is on the left, moving through the folder in the middle (Previous, the
- * {@link Filmstrip}, Next), and how it is shown on the right (Background, Settings, Keep shown). When the host
+ * {@link Filmstrip}, Next), and how it is shown on the right (Turn, Background, Settings, Keep shown). When the host
  * {@link Host#opens opens}, the words that say what this is are its Open button, shaded on hover like a tile, and say
  * {@value #PROMPT} while nothing is open.
  *
  * <p><b>A narrow window keeps what fits</b> ({@link #fit}). With no room for a thumbnail between Previous and Next,
- * the two move out of the bar to the window's left and right edges; with no room for both side groups, Background and
- * Keep shown go, and then Close and the words. Nothing is ever drawn overlapping or cut off.
+ * the two move out of the bar to the window's left and right edges; with no room for both side groups, Turn, Background,
+ * Settings and Keep shown go, and then Close and the words. Nothing is ever drawn overlapping or cut off.
  *
  * <p><b>The picture has the whole window</b> under the title bar, and the controls float over it: when the pointer
  * rests they fade, after {@link #IDLE_MS}, and moving the mouse, clicking or pressing Tab brings them back. <b>Keep
  * shown</b> pins them: they stop fading, the pin stands upright on the chosen fill, and they take room of their own,
- * the picture shrinking to the rest so that no control covers any of it. The backdrop menu is drawn over the picture
- * either way; it closes on a choice, a second press, a click on the picture, or Escape.
+ * the picture shrinking to the rest so that no control covers any of it. The menus are drawn over the picture either
+ * way; one closes on a second press, a click on the picture, or Escape, and the backdrop's on a choice too.
  *
  * <p><b>The picture can be looked at closely</b> ({@link Lens}): the wheel zooms about the pointer, a drag moves the
  * picture, Ctrl and a drag turn it to any angle about its centre, Shift and the wheel turn it a little, R and Shift+R
- * turn it a quarter, and a double click fits it again. It is held where it can be seen: no larger than the stage, it
- * stays inside; larger, it keeps at least a quarter of the stage covered, and pulled past that it springs back with
- * the momentum it had. Another picture starts fitted and upright.
+ * turn it a quarter, H and V mirror it left and right or top and bottom as it is seen, and a double click fits it
+ * again. The Turn menu has the quarter turns and the mirrors too, and puts it back as the file is: upright, not
+ * mirrored, fitted. It is held where it can be seen: no larger than the stage, it stays inside; larger, it keeps at
+ * least a quarter of the stage covered, and pulled past that it springs back with the momentum it had. Another
+ * picture starts fitted, upright and not mirrored.
  *
  * <p><b>Active only while shown.</b> The idle fade runs, and a picture is uploaded, only between {@link #active
  * active(true)} and {@code active(false)}: the window it is in is up, and its {@link Textures} are bound. A picture
@@ -88,7 +90,8 @@ import java.util.function.Function;
  *
  * <p>Landmarks, each with the prefix given to the constructor: {@link #NAME}, {@link #INFO}, {@link #COUNT} (written at
  * once on every step, so scripts await them), the tiles {@link #CLOSE}, {@link #OPEN}, {@link #PREVIOUS}, {@link #NEXT},
- * {@link #BACKGROUND}, {@link #SETTINGS}, {@link #KEEP}, the backdrop swatches {@link #BACKDROP}{@code checker} and so
+ * {@link #TURN}, {@link #BACKGROUND}, {@link #SETTINGS}, {@link #KEEP}, the Turn menu's {@link #TURN_LEFT},
+ * {@link #TURN_RIGHT}, {@link #MIRROR_ACROSS}, {@link #MIRROR_DOWN} and {@link #UPRIGHT}, the backdrop swatches {@link #BACKDROP}{@code checker} and so
  * on, the scaling choices {@link #MOVING}{@code lanczos} and {@link #RESTING}{@code lanczos} and so on, and the
  * transport's {@link #PLAY}, {@link #FRAME_BACK}, {@link #FRAME_ON}, {@link #SEEK}, {@link #POSITION} and {@link #LOOP}.
  *
@@ -163,6 +166,13 @@ public final class PictureViewer {
     public static final String KEEP = "keep";
     public static final String BACKDROP = "backdrop.";
     public static final String SETTINGS = "settings";
+    /** The Turn tile, and its menu's actions. */
+    public static final String TURN = "turn";
+    public static final String TURN_LEFT = "turn.left";
+    public static final String TURN_RIGHT = "turn.right";
+    public static final String MIRROR_ACROSS = "turn.mirror-across";
+    public static final String MIRROR_DOWN = "turn.mirror-down";
+    public static final String UPRIGHT = "turn.upright";
     public static final String MOVING = "moving.";
     public static final String RESTING = "resting.";
     /** The transport, shown while the picture plays: play and pause, a frame back and on, the seek bar, the clock,
@@ -220,6 +230,7 @@ public final class PictureViewer {
     private final Tile background;
     private final Tile keep;
     private final Tile settings;
+    private final Tile turn;
     private final Filmstrip strip;
     private final Node controls;
     private final Node title;
@@ -238,7 +249,8 @@ public final class PictureViewer {
     /** Everything that fades: the bar, and the two sides. */
     private final List<Node> chrome;
     private final Node stage;
-    /** The two menus over the picture, Background's and Settings', of which one at most is open. */
+    /** The menus over the picture, Turn's, Background's and Settings', of which one at most is open. */
+    private final Menu turnMenu;
     private final Menu backdropMenu;
     private final Menu settingsMenu;
     private final Map<ImageFilter, Choice> movingChoices = new EnumMap<>(ImageFilter.class);
@@ -317,12 +329,14 @@ public final class PictureViewer {
         this.next = Tile.of(gui, Icon.CHEVRON_RIGHT, "Next").onPress(() -> host.step(1));
         this.background = Tile.of(gui, Icon.PALETTE, "Background").toggle().onPress(this::toggleBackdrop);
         this.settings = Tile.of(gui, Icon.SETTINGS, "Settings").toggle().onPress(this::toggleSettings);
+        this.turn = Tile.of(gui, Icon.ROTATE, "Turn").toggle().onPress(this::toggleTurn);
         this.keep = Tile.of(gui, Icon.PIN_UP, "Keep shown").toggle().onPress(this::toggleKeep);
         gui.landmark(landmarks + CLOSE, close.node());
         gui.landmark(landmarks + PREVIOUS, prev.node());
         gui.landmark(landmarks + NEXT, next.node());
         gui.landmark(landmarks + BACKGROUND, background.node());
         gui.landmark(landmarks + SETTINGS, settings.node());
+        gui.landmark(landmarks + TURN, turn.node());
         gui.landmark(landmarks + KEEP, keep.node());
 
         this.strip = new Filmstrip(gui, krono, textures, thumbnail, host::pick);
@@ -337,7 +351,7 @@ public final class PictureViewer {
         this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
         this.browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
         this.tools = slab(gui.row()).alignItems(AlignItems.CENTER)
-                .children(background.node(), settings.node(), keep.node());
+                .children(turn.node(), background.node(), settings.node(), keep.node());
 
         Node left = gui.row().width(Length.grow(1f)).height(Length.AUTO).scroll(false, false).children(title);
         Node right = gui.row().width(Length.grow(1f)).height(Length.AUTO).justify(Justify.END).scroll(false, false)
@@ -416,6 +430,17 @@ public final class PictureViewer {
                 .padding(Length.rem(0.75f)).children(scalingCaption, lists));
         showScaling();
 
+        // Turn: a quarter either way, a mirror either way, and back as it was. It stays open, to be pressed again.
+        Node turns = gui.column().width(Length.AUTO).height(Length.AUTO).gap(Length.rem(0.125f)).scroll(false, false);
+        turnChoice(turns, landmarks + TURN_LEFT, Icon.ROTATE_CCW, "Turn left", l -> l.quarter(-1));
+        turnChoice(turns, landmarks + TURN_RIGHT, Icon.ROTATE_CW, "Turn right", l -> l.quarter(1));
+        turnChoice(turns, landmarks + MIRROR_ACROSS, Icon.MIRROR_H, "Mirror left and right", l -> l.mirror(true));
+        turnChoice(turns, landmarks + MIRROR_DOWN, Icon.MIRROR_V, "Mirror top and bottom", l -> l.mirror(false));
+        turnChoice(turns, landmarks + UPRIGHT, Icon.RESET, "As the file is", Lens::upright);
+        Node turnCaption = text("TURN", SuiteType.SMALL, Role.DIM, SuiteType.UI);
+        this.turnMenu = menu(turn, slab(gui.column()).alignItems(AlignItems.START)
+                .padding(Length.rem(0.75f)).children(turnCaption, turns));
+
         this.image = new ImageView(gui, krono, textures, Length.ZERO, Length.ZERO).bare();
         this.sharpen = new Sharpen(gui.offload(), image);
         image.filter(moving);
@@ -426,7 +451,8 @@ public final class PictureViewer {
         image.onFit(() -> look(l -> l.measure(image.fitted())));
         image.onPlayback(this::showTransport);
         this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
-                .children(image.node(), leftSide, rightSide, transport, backdropMenu.node(), settingsMenu.node());
+                .children(image.node(), leftSide, rightSide, transport, turnMenu.node(), backdropMenu.node(),
+                        settingsMenu.node());
         gui.root().direction(Direction.COLUMN).children(bar.node(), stage, controls);
         dock();
         gui.onResize(gui.root(), box -> {
@@ -450,6 +476,8 @@ public final class PictureViewer {
         });
         gui.shortcut(Key.R, () -> look(l -> l.quarter(1)));
         gui.shortcut(Key.R, () -> look(l -> l.quarter(-1)), Modifier.SHIFT);
+        gui.shortcut(Key.H, () -> look(l -> l.mirror(true)));
+        gui.shortcut(Key.V, () -> look(l -> l.mirror(false)));
         // A picture that plays: Space plays and pauses, comma and period step a frame, with Shift a second, L loops.
         gui.shortcut(Key.SPACE, () -> playback(Playback::toggle));
         gui.shortcut(Key.COMMA, () -> playback(p -> p.step(-1)));
@@ -613,7 +641,7 @@ public final class PictureViewer {
      * @param arrowsInBar Previous and Next in the bar, either side of the filmstrip; otherwise at the window's sides
      * @param sides       whether they are shown at the window's sides
      * @param title       Close and the words
-     * @param tools       Background, Settings and Keep shown
+     * @param tools       Turn, Background, Settings and Keep shown
      */
     record Fit(int thumbnails, boolean arrowsInBar, boolean sides, boolean title, boolean tools) {
     }
@@ -621,7 +649,7 @@ public final class PictureViewer {
     /**
      * What fits a bar {@code width} px across inside its margins, its tiles {@code tile} px square. The middle group
      * comes first while it has room for a thumbnail; then Previous and Next go to the window's sides, and the two side
-     * groups share the bar, until they do not fit side by side, when Background, Settings and Keep shown go, and then
+     * groups share the bar, until they do not fit side by side, when Turn, Background, Settings and Keep shown go, and then
      * the rest.
      */
     static Fit fit(float width, float tile) {
@@ -629,7 +657,7 @@ public final class PictureViewer {
         float barGap = 2f * gap;
         // Each slab: its tiles, its padding and a gap between each two, and its 1 px edges.
         float title = tile + tile * TITLE_REM / Tile.SIDE_REM + 3f * gap + 2f;
-        float tools = 3f * tile + 4f * gap + 2f;   // Background, Settings and Keep shown
+        float tools = 4f * tile + 5f * gap + 2f;   // Turn, Background, Settings and Keep shown
         int n = thumbnails(width, Math.max(title, tools), tile, gap, barGap);
         if (n > 0) {
             return new Fit(n, true, false, true, true);
@@ -698,6 +726,7 @@ public final class PictureViewer {
         }
         stage.padding(Length.ZERO, pinned && arrowsAtSides ? SIDE_ROOM : Length.ZERO);
         transportLift.visible(!pinned);
+        turnMenu.lift().visible(!pinned);
         backdropMenu.lift().visible(!pinned);
         settingsMenu.lift().visible(!pinned);
     }
@@ -907,6 +936,20 @@ public final class PictureViewer {
 
     private void toggleSettings() {
         toggle(settingsMenu);
+    }
+
+    private void toggleTurn() {
+        toggle(turnMenu);
+    }
+
+    /** A row of the Turn menu, in {@code list}: {@code change} to the lens, the bar kept up while it is used. */
+    private void turnChoice(Node list, String landmark, Icon icon, String words, Consumer<Lens> change) {
+        Choice c = new Choice(gui, icon, words, () -> {
+            look(change);
+            stir();
+        }).action();
+        gui.landmark(landmark, c.node());
+        list.append(c.node());
     }
 
     /** Open {@code m}, closing any other; or close it, if it is the one open. */

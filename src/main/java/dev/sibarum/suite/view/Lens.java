@@ -19,7 +19,8 @@ import dev.vexelray.codec.image.gui.ImageView.Pose;
  *
  * <p><b>Turned any way.</b> A quarter turn ({@link #quarter}) goes to the next multiple of 90° and, if the picture
  * was fitted, fits it again the new way round; a twist ({@link #twist}) or a fine turn ({@link #turn}) leaves it at
- * any angle.
+ * any angle. A mirror ({@link #mirror}) swaps the sides as they are seen, whichever way it is turned, and
+ * {@link #upright} undoes the turn and the mirror both.
  *
  * <p>Not thread-safe: the viewer calls it under its own lock.
  */
@@ -71,6 +72,9 @@ final class Lens {
     private float vy;
     private float degrees;
     private float degreesGoal;
+    /** Mirrored in the picture's own frame, before the turn ({@link Pose}). */
+    private boolean mirrorX;
+    private boolean mirrorY;
     /** Fitted: zoom follows the stage and the turn, until the user zooms. */
     private boolean fitting = true;
     /** Going back to the centre, not only inside the limit: after {@link #fit}. */
@@ -86,10 +90,12 @@ final class Lens {
     private boolean twisting;
     private float twistFrom;
     private float twistStart;
+    /** Where the pointer is in the twist in hand, in degrees about the picture's centre. */
+    private float twistAt;
 
     /** The pose to draw. */
     Pose pose() {
-        return new Pose(zoom, x, y, degrees);
+        return new Pose(zoom, x, y, degrees, mirrorX, mirrorY);
     }
 
     /** Whether there is a picture and a stage to measure it on. */
@@ -97,11 +103,12 @@ final class Lens {
         return stageW > 0f && baseW > 0f;
     }
 
-    /** Back to rest: fitted, centred, upright, still. For a new picture. */
+    /** Back to rest: fitted, centred, upright, not mirrored, still. For a new picture. */
     void reset() {
         zoom = zoomGoal = 1f;
         x = y = vx = vy = 0f;
         degrees = degreesGoal = 0f;
+        mirrorX = mirrorY = false;
         fitting = true;
         homing = false;
         dragging = twisting = false;
@@ -163,6 +170,43 @@ final class Lens {
         }
     }
 
+    /**
+     * Mirror the picture as it is seen on the stage: its left and right swapped for {@code across}, its top and bottom
+     * otherwise, whichever way it is turned. Mirroring a turned picture on the screen is mirroring it in its own frame
+     * and turning it back the other way ({@code H·R(θ) = R(-θ)·H}), so the turn changes sign, at once rather than
+     * easing, which would spin it through every angle between. Its size and place stay as they are.
+     */
+    void mirror(boolean across) {
+        if (across) {
+            mirrorX = !mirrorX;
+        } else {
+            mirrorY = !mirrorY;
+        }
+        degrees = -degrees;
+        degreesGoal = -degreesGoal;
+        if (twisting) {
+            // The twist in hand goes on from here, the pointer where it is.
+            twistStart = degreesGoal;
+            twistFrom = twistAt;
+        }
+    }
+
+    /** Upright, not mirrored, and fitted again in the centre: as a new picture is shown. */
+    void upright() {
+        degreesGoal = Math.round(degreesGoal / 360f) * 360f;
+        mirrorX = mirrorY = false;
+        fit();
+    }
+
+    /** Whether the picture is mirrored across (left and right) and down (top and bottom), in its own frame. */
+    boolean mirroredX() {
+        return mirrorX;
+    }
+
+    boolean mirroredY() {
+        return mirrorY;
+    }
+
     /** A fine turn by {@code notches} of the wheel, clockwise for positive. */
     void turn(float notches) {
         degreesGoal += notches * NOTCH_DEGREES;
@@ -218,7 +262,7 @@ final class Lens {
     /** A twist starts with the pointer at {@code (px, py)}. */
     void twistFrom(float px, float py) {
         twisting = true;
-        twistFrom = angle(px, py);
+        twistFrom = twistAt = angle(px, py);
         twistStart = degreesGoal;
     }
 
@@ -227,8 +271,8 @@ final class Lens {
         if (!twisting) {
             twistFrom(px, py);
         }
-        float d = angle(px, py) - twistFrom;
-        degrees = degreesGoal = twistStart + d;
+        twistAt = angle(px, py);
+        degrees = degreesGoal = twistStart + (twistAt - twistFrom);
     }
 
     void twistEnd() {
@@ -278,16 +322,36 @@ final class Lens {
      * screen. Turned, no grid lines up, and it is left as it is.
      */
     float[] visible(float margin, float originX, float originY) {
-        float[] v = visible(margin);
+        float[] v = onPlate(margin);
         if (v == null || degrees % 360f != 0f) {
-            return v;
+            return unmirrored(v);
         }
         float[] across = snap(v[0], v[2], baseW, stageW, x, originX);
         float[] down = snap(v[1], v[3], baseH, stageH, y, originY);
         if (across == null || down == null) {
+            return unmirrored(v);
+        }
+        return unmirrored(new float[] {across[0], down[0], across[1], down[1], across[2], down[2], zoom});
+    }
+
+    /**
+     * {@code v}, a part of the picture as it is drawn, as a part of the picture as it is: the same part read the
+     * other way along each axis it is mirrored on. What the file's own pixels are cut by.
+     */
+    private float[] unmirrored(float[] v) {
+        if (v == null || (!mirrorX && !mirrorY)) {
             return v;
         }
-        return new float[] {across[0], down[0], across[1], down[1], across[2], down[2], zoom};
+        float[] u = v.clone();
+        if (mirrorX) {
+            u[0] = 1f - v[2];
+            u[2] = 1f - v[0];
+        }
+        if (mirrorY) {
+            u[1] = 1f - v[3];
+            u[3] = 1f - v[1];
+        }
+        return u;
     }
 
     /**
@@ -322,6 +386,11 @@ final class Lens {
 
     /** {@link #visible(float, float, float)} as it falls, not moved onto whole pixels. */
     float[] visible(float margin) {
+        return unmirrored(onPlate(margin));
+    }
+
+    /** {@link #visible(float)} in fractions of the picture as it is drawn, mirrored as it is. */
+    private float[] onPlate(float margin) {
         if (!measured()) {
             return null;
         }

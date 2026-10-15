@@ -64,6 +64,12 @@ final class Choice {
         return node;
     }
 
+    /** An action rather than an option: pressing it does something, and it is never shown chosen. */
+    Choice action() {
+        node.role("button");
+        return this;
+    }
+
     /** Show it as the one chosen, or not. Silent: the caller decides what choosing means. */
     Choice on(boolean value) {
         on = value;

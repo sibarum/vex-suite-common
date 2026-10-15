@@ -171,6 +171,60 @@ class LensTest {
     }
 
     @Test
+    void aMirrorSwapsTheSidesAsTheyAreSeen() {
+        Lens l = lens();
+        l.mirror(true);
+        assertTrue(l.pose().mirrorX());
+        assertFalse(l.pose().mirrorY());
+        // Turned a quarter, a mirror across the screen is one down the picture's own frame, turned back the other way.
+        l = lens();
+        l.quarter(1);
+        settle(l);
+        l.mirror(true);
+        assertEquals(-90f, l.pose().degrees(), 1e-3f);
+        assertFalse(l.moving(), "at once, not spun through the angles between");
+        l.mirror(true);
+        assertEquals(90f, l.pose().degrees(), 1e-3f, "and twice is as it was");
+        assertFalse(l.pose().mirrorX());
+    }
+
+    @Test
+    void aMirroredPartIsCutFromThePictureAsItIs() {
+        Lens l = lens();
+        l.wheel((float) (Math.log(4) / Math.log(Lens.NOTCH)), 0f, 0f);
+        settle(l);
+        l.grab(0L);
+        l.drag(1200f, 0f, 10_000_000L);   // the picture to the right: the stage shows its left part
+        l.release(500_000_000L);
+        settle(l);
+        float[] plain = l.visible(0f);
+        assertTrue(plain[0] == 0f && plain[2] < 1f, "its left part");
+        l.mirror(true);
+        float[] mirrored = l.visible(0f);
+        // Drawn the same place, mirrored: what is shown there is the picture's right part.
+        assertEquals(1f - plain[2], mirrored[0], 1e-4f);
+        assertEquals(1f, mirrored[2], 1e-4f);
+        assertEquals(plain[1], mirrored[1], 1e-4f);
+        assertEquals(plain[4], mirrored[4], 1e-3f);
+    }
+
+    @Test
+    void uprightUndoesTheTurnAndTheMirror() {
+        Lens l = lens();
+        l.quarter(1);
+        l.mirror(false);
+        l.wheel(3f, 0f, 0f);
+        settle(l);
+        l.upright();
+        settle(l);
+        Pose p = l.pose();
+        assertEquals(0f, p.degrees() % 360f, 1e-3f);
+        assertFalse(p.mirrorX() || p.mirrorY());
+        assertEquals(1f, p.zoom(), 1e-3f, "fitted again");
+        assertEquals(0f, p.x(), 1e-3f);
+    }
+
+    @Test
     void aResizeKeepsAZoomedPictureItsSizeOnTheScreen() {
         Lens l = lens();
         l.wheel(2f, 0f, 0f);
