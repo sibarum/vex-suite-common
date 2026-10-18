@@ -45,6 +45,12 @@
             <artifactId>vexelray-gui-krono</artifactId>
             <version>${vexelray-gui.version}</version>
         </dependency>
+        <!-- The key map: the viewer's commands by name, on the chords and touchpad gestures the user gives them. -->
+        <dependency>
+            <groupId>dev.vexelray.gui</groupId>
+            <artifactId>vexelray-gui-keymap</artifactId>
+            <version>${vexelray-gui.version}</version>
+        </dependency>
         <!-- Keys and input events, which the viewer's shortcuts and its idle fade read. -->
         <dependency>
             <groupId>sibarum.tactroller</groupId>

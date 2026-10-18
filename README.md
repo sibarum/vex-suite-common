@@ -67,10 +67,13 @@ view/               the viewer and its parts, on vexelray-gui.
   PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
                     opens), Previous, the filmstrip, Next, Background and Keep shown, which fades when the
                     pointer rests, and when pinned takes room of its own. Told what to show (Showing); tells
-                    the application what the user did (Host). Vexplore shows it in a second window, Pix as its whole
+                    the application what the user did (Host). Its commands are actions on a Keymap (view.next,
+                    play.toggle, ...) with keys and touchpad gestures as defaults; two fingers pan, pinch and twist
+                    the picture directly. Vexplore shows it in a second window, Pix as its whole
                     window.
   Lens              how the picture is looked at: zoomed about the pointer, moved, turned to any angle, and held
-                    where it can be seen, springing back with its momentum. Pure, so it is tested without a window.
+                    where it can be seen, springing back with its momentum; pinched and twisted about the fingers,
+                    settling onto a quarter turn or fitted when let go near one. Pure, so it is tested without a window.
   Sharpen           at rest, the part on screen made again from the file's full-size pixels at exactly the size it
                     is drawn, and laid over the picture. While it moves, the picture is drawn as it was.
   Filmstrip         the neighbours' thumbnails, gliding one square along on a step.

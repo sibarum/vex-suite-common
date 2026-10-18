@@ -12,6 +12,7 @@ import dev.vexelray.gui.core.Node;
 import dev.vexelray.gui.core.input.ClaimScope;
 import dev.vexelray.gui.core.input.CursorShape;
 import dev.vexelray.gui.core.input.DragEvent;
+import dev.vexelray.gui.core.input.Gesture;
 import dev.vexelray.gui.core.input.InputTopics;
 import dev.vexelray.gui.core.input.InteractionState;
 import dev.vexelray.gui.core.input.Shortcut;
@@ -27,11 +28,13 @@ import dev.vexelray.gui.icons.Icon;
 import dev.vexelray.gui.icons.IconView;
 import dev.vexelray.gui.krono.KronoGui;
 import dev.vexelray.gui.krono.Scheduled;
+import dev.vexelray.gui.keymap.Keymap;
 import dev.vexelray.gui.widget.Slider;
 import dev.vexelray.gui.widget.TitleBar;
 import sibarum.kronometer.Dur;
 import sibarum.kronometer.Time;
 import sibarum.kronometer.anim.Ease;
+import sibarum.tactroller.api.GestureEvent;
 import sibarum.tactroller.api.InputEvent;
 import sibarum.tactroller.api.Key;
 import sibarum.tactroller.api.Modifier;
@@ -193,6 +196,13 @@ public final class PictureViewer {
     private static final int FRAME_MS = 16;
     /** How long the picture rests before the sharper copy of it is made. */
     private static final int SETTLE_MS = 150;
+    /**
+     * How far the picture goes for each millimetre two fingers go on a touchpad, in px: a laptop's pad, about 100 mm
+     * across, is about a screen's width of picture.
+     */
+    static final float PX_PER_MM = 16f;
+    /** How long after the last finger lifts a wheel turn is still the touchpad's, made by the OS, not a wheel's. */
+    private static final long TOUCH_TAIL_NANOS = 150_000_000L;
 
     private static final Length SLAB_CORNER = Length.rem(1.625f);
     /** The title's text column is this wide and clips, so a long name never pushes the filmstrip aside. */
@@ -272,6 +282,16 @@ public final class PictureViewer {
     private final Sharpen sharpen;
     /** Whether the drag in hand turns the picture rather than moving it: Ctrl was held as it started. */
     private volatile boolean twisting;
+    /** What two fingers on the touchpad are doing to the picture, or null; and the point a pinch is about. */
+    private volatile GestureEvent.Kind touch;
+    private volatile float touchX;
+    private volatile float touchY;
+    /** How many fingers are on the touchpad, and when the last one lifted: the OS makes a wheel of them. */
+    private volatile int fingers;
+    private volatile long liftedNanos;
+    /** Where the pointer is, for a tap, which happens nowhere in particular. */
+    private volatile int pointerX;
+    private volatile int pointerY;
 
     // Guarded by this; volatile, since the lens reads it under its own lock.
     private volatile boolean active;
@@ -307,6 +327,16 @@ public final class PictureViewer {
      */
     public PictureViewer(Gui gui, KronoGui krono, Textures textures, TitleBar bar, Function<Path, Picture> thumbnail,
                          Host host, String landmarks) {
+        this(gui, krono, textures, bar, thumbnail, host, landmarks, new Keymap(gui));
+    }
+
+    /**
+     * The same, with the viewer's commands declared on {@code keys} — the application's key map, which the user can
+     * change in its editor and which keeps what they change. Each command is an action by name ({@code view.next},
+     * {@code play.toggle}, …) with its keys and touchpad gestures as defaults.
+     */
+    public PictureViewer(Gui gui, KronoGui krono, Textures textures, TitleBar bar, Function<Path, Picture> thumbnail,
+                         Host host, String landmarks, Keymap keys) {
         this.gui = gui;
         this.krono = krono;
         this.host = host;
@@ -461,34 +491,55 @@ public final class PictureViewer {
         });
         backdrop(Backdrop.DARK);
 
-        gui.shortcut(Key.LEFT, () -> host.step(-1));
-        gui.shortcut(Key.RIGHT, () -> host.step(1));
-        gui.shortcut(Key.PAGE_UP, () -> host.step(-1));
-        gui.shortcut(Key.PAGE_DOWN, () -> host.step(1));
-        gui.shortcut(Key.HOME, () -> host.step(Integer.MIN_VALUE));
-        gui.shortcut(Key.END, () -> host.step(Integer.MAX_VALUE));
-        gui.shortcut(Key.ESCAPE, () -> {
+        // The commands, by name, on the keys and gestures they start with; the user's key map has the last word. Three
+        // fingers swiping left take the picture away to the left, so the next one comes in from the right, as it is
+        // thrown in: the page turns the way the hand turned it.
+        keys.action("view.previous", "Previous picture", Shortcut.of(Key.LEFT), Shortcut.of(Key.PAGE_UP),
+                Gesture.swipe(3, Gesture.Motion.SWIPE_RIGHT)).on(() -> host.step(-1));
+        keys.action("view.next", "Next picture", Shortcut.of(Key.RIGHT), Shortcut.of(Key.PAGE_DOWN),
+                Gesture.swipe(3, Gesture.Motion.SWIPE_LEFT)).on(() -> host.step(1));
+        keys.action("view.first", "First picture", Shortcut.of(Key.HOME)).on(() -> host.step(Integer.MIN_VALUE));
+        keys.action("view.last", "Last picture", Shortcut.of(Key.END)).on(() -> host.step(Integer.MAX_VALUE));
+        keys.action("view.close", "Close the menu, or the viewer", Shortcut.of(Key.ESCAPE)).on(() -> {
             if (open != null) {
                 closeMenu();
             } else {
                 host.close();
             }
         });
-        gui.shortcut(Key.R, () -> look(l -> l.quarter(1)));
-        gui.shortcut(Key.R, () -> look(l -> l.quarter(-1)), Modifier.SHIFT);
-        gui.shortcut(Key.H, () -> look(l -> l.mirror(true)));
-        gui.shortcut(Key.V, () -> look(l -> l.mirror(false)));
+        keys.action("view.fit-or-actual", "Fit, or the picture's own pixels", Gesture.doubleTap(2))
+                .on(this::fitOrActual);
+        keys.action("view.turn-right", "Turn a quarter right", Shortcut.of(Key.R)).on(() -> look(l -> l.quarter(1)));
+        keys.action("view.turn-left", "Turn a quarter left", Shortcut.of(Key.R, Modifier.SHIFT))
+                .on(() -> look(l -> l.quarter(-1)));
+        keys.action("view.mirror-across", "Mirror left and right", Shortcut.of(Key.H))
+                .on(() -> look(l -> l.mirror(true)));
+        keys.action("view.mirror-down", "Mirror top and bottom", Shortcut.of(Key.V))
+                .on(() -> look(l -> l.mirror(false)));
         // A picture that plays: Space plays and pauses, comma and period step a frame, with Shift a second, L loops.
-        gui.shortcut(Key.SPACE, () -> playback(Playback::toggle));
-        gui.shortcut(Key.COMMA, () -> playback(p -> p.step(-1)));
-        gui.shortcut(Key.PERIOD, () -> playback(p -> p.step(1)));
-        gui.shortcut(Key.COMMA, () -> playback(p -> p.seek(p.position() - JUMP_MS)), Modifier.SHIFT);
-        gui.shortcut(Key.PERIOD, () -> playback(p -> p.seek(p.position() + JUMP_MS)), Modifier.SHIFT);
-        gui.shortcut(Key.L, () -> playback(p -> p.loop(!p.loop())));
+        keys.action("play.toggle", "Play or pause", Shortcut.of(Key.SPACE)).on(() -> playback(Playback::toggle));
+        keys.action("play.frame-back", "A frame back", Shortcut.of(Key.COMMA)).on(() -> playback(p -> p.step(-1)));
+        keys.action("play.frame-on", "A frame on", Shortcut.of(Key.PERIOD)).on(() -> playback(p -> p.step(1)));
+        keys.action("play.second-back", "A second back", Shortcut.of(Key.COMMA, Modifier.SHIFT))
+                .on(() -> playback(p -> p.seek(p.position() - JUMP_MS)));
+        keys.action("play.second-on", "A second on", Shortcut.of(Key.PERIOD, Modifier.SHIFT))
+                .on(() -> playback(p -> p.seek(p.position() + JUMP_MS)));
+        keys.action("play.loop", "Loop on or off", Shortcut.of(Key.L)).on(() -> playback(p -> p.loop(!p.loop())));
 
         // The framework has no per-node pointer-move hook, so the bar's idle fade reads input off the bus; and no
-        // per-node wheel hook, so the wheel over the picture is read there too.
+        // per-node wheel hook, so the wheel over the picture is read there too. The touchpad's fingers are counted
+        // here, because the OS makes a wheel of them that is not one.
         gui.bus().subscribe(InputTopics.INPUT, e -> {
+            if (e instanceof InputEvent.TouchpadChanged t) {
+                if (t.contacts().isEmpty() && fingers > 0) {
+                    liftedNanos = System.nanoTime();
+                }
+                fingers = t.contacts().size();
+            }
+            if (e instanceof InputEvent.PointerMoved m) {
+                pointerX = m.x();
+                pointerY = m.y();
+            }
             if (e instanceof InputEvent.Scrolled s) {
                 wheel(s);
             }
@@ -498,6 +549,7 @@ public final class PictureViewer {
                 stir();
             }
         });
+        gui.bus().subscribe(InputTopics.GESTURE, this::gesture);
     }
 
     /**
@@ -817,7 +869,7 @@ public final class PictureViewer {
      * fine turn. Up is in, and clockwise.
      */
     private void wheel(InputEvent.Scrolled s) {
-        if (open != null || over.get() != 0) {
+        if (open != null || over.get() != 0 || touching()) {
             return;
         }
         float[] p = onStage(s.x(), s.y());
@@ -869,6 +921,92 @@ public final class PictureViewer {
                 l.release(now);
             });
         }
+    }
+
+    /**
+     * Whether fingers are on the touchpad, or only just left it. The OS turns two fingers into a wheel, and a pinch
+     * into Ctrl and the wheel, as well as reporting them; read as a wheel they would zoom the picture a second time,
+     * and a pan would zoom it at all. The gestures are the touchpad's, so its wheel is ignored.
+     */
+    private boolean touching() {
+        return fingers > 0 || System.nanoTime() - liftedNanos < TOUCH_TAIL_NANOS;
+    }
+
+    /**
+     * Two fingers on the touchpad, over the picture: moving together they carry it, as a drag does, and let go of it
+     * at the speed they were going; spreading, pinching and twisting they zoom and turn it about the pointer, which
+     * holds still while they do. A gesture starting over a control or an open menu is not the picture's.
+     */
+    private void gesture(GestureEvent g) {
+        if (g.fingers() != 2) {
+            return;   // three are the swipes, which are commands; four and more are the OS's
+        }
+        switch (g) {
+            case GestureEvent.GestureStarted s -> {
+                float[] p = open != null || over.get() != 0 ? null : onStage(s.x(), s.y());
+                if (p == null) {
+                    return;
+                }
+                touch = s.kind();
+                touchX = p[0];
+                touchY = p[1];
+                long now = System.nanoTime();
+                look(l -> {
+                    if (s.kind() == GestureEvent.Kind.PAN) {
+                        l.grab(now);
+                    } else {
+                        l.pinchStart();
+                    }
+                });
+            }
+            case GestureEvent.GestureUpdated u -> {
+                GestureEvent.Kind k = touch;
+                float dx = (float) u.dx() * PX_PER_MM;
+                float dy = (float) u.dy() * PX_PER_MM;
+                if (k == GestureEvent.Kind.PAN) {
+                    long now = System.nanoTime();
+                    look(l -> l.drag(dx, dy, now));
+                } else if (k == GestureEvent.Kind.PINCH) {
+                    float scale = (float) u.scale();
+                    float turn = (float) Math.toDegrees(u.rotation());
+                    float px = touchX;
+                    float py = touchY;
+                    look(l -> l.pinch(scale, turn, dx, dy, px, py));
+                }
+            }
+            case GestureEvent.GestureEnded e -> {
+                GestureEvent.Kind k = touch;
+                touch = null;
+                if (k == GestureEvent.Kind.PAN) {
+                    float fx = (float) e.velocityX() * PX_PER_MM;
+                    float fy = (float) e.velocityY() * PX_PER_MM;
+                    look(l -> l.release(fx, fy));
+                } else if (k == GestureEvent.Kind.PINCH) {
+                    float px = touchX;
+                    float py = touchY;
+                    look(l -> l.pinchEnd(px, py));
+                }
+            }
+            case GestureEvent.Tapped t -> {
+                // Taps are commands, bound in the key map: view.fit-or-actual.
+            }
+        }
+    }
+
+    /**
+     * Fitted, or the picture's own pixels about the pointer: from fitted it goes to one of its pixels on each of the
+     * screen's, and from anything else back to fitted. A two-finger double tap, unless the user bound it elsewhere.
+     */
+    private void fitOrActual() {
+        Picture p;
+        synchronized (this) {
+            p = shown;
+        }
+        float[] at = onStage(pointerX, pointerY);
+        float px = at == null ? 0f : at[0];
+        float py = at == null ? 0f : at[1];
+        int sourceW = p == null ? 0 : p.sourceWidth();
+        look(l -> l.fitOrActual(l.actual(sourceW), px, py));
     }
 
     /** The window point {@code (x, y)} from the picture stage's centre, or null when it is not over the stage. */

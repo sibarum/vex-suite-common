@@ -233,4 +233,87 @@ class LensTest {
         l.measure(new Fitted(500f, 300f, 400f, 300f));
         assertEquals(shown, l.pose().zoom() * 400f, 0.01f);
     }
+
+    @Test
+    void aPinchZoomsAndTurnsAboutTheFingersPointWhichStaysUnderThem() {
+        Lens l = lens();
+        l.pinchStart();
+        // A point on the picture 100px right of the centre, under the fingers: twice the size and a quarter turn.
+        l.pinch(2f, 90f, 0f, 0f, 100f, 0f);
+        Pose p = l.pose();
+        assertEquals(2f, p.zoom(), 1e-4f);
+        assertEquals(90f, p.degrees(), 1e-4f);
+        // The picture's centre was 100px left of the point; doubled and turned clockwise it is 200px above it.
+        assertEquals(100f, p.x(), 1e-3f);
+        assertEquals(-200f, p.y(), 1e-3f);
+        assertFalse(l.still(), "in the fingers, not at rest");
+    }
+
+    @Test
+    void aPinchLeftNearAQuarterTurnSettlesOntoItAndOneLeftAskewStays() {
+        Lens near = lens();
+        near.pinch(1.5f, 85f, 0f, 0f, 0f, 0f);
+        near.pinchEnd(0f, 0f);
+        settle(near);
+        assertEquals(90f, near.pose().degrees(), 1e-3f);
+
+        Lens askew = lens();
+        askew.pinch(1.5f, 30f, 0f, 0f, 0f, 0f);
+        askew.pinchEnd(0f, 0f);
+        settle(askew);
+        assertEquals(30f, askew.pose().degrees(), 1e-3f);
+    }
+
+    @Test
+    void aPinchLeftNearFittedIsFittedAndCentred() {
+        Lens l = lens();
+        l.pinch(1.04f, 3f, 40f, 20f, 0f, 0f);
+        l.pinchEnd(0f, 0f);
+        settle(l);
+        Pose p = l.pose();
+        assertEquals(1f, p.zoom(), 1e-4f);
+        assertEquals(0f, p.degrees(), 1e-4f);
+        assertEquals(0f, p.x(), 0.25f);
+        assertEquals(0f, p.y(), 0.25f);
+    }
+
+    @Test
+    void aPinchPastTheLimitGivesAndComesBack() {
+        Lens l = lens();
+        l.pinch(Lens.MAX_ZOOM * 16f, 0f, 0f, 0f, 0f, 0f);   // four doublings past the limit
+        float held = l.pose().zoom();
+        assertEquals(Lens.MAX_ZOOM * 2f, held, 1e-2f, "a quarter of each doubling asked for: one of four");
+        l.pinchEnd(0f, 0f);
+        settle(l);
+        assertEquals(Lens.MAX_ZOOM, l.pose().zoom(), 1e-3f);
+    }
+
+    @Test
+    void aTouchpadReleaseFlingsAtTheFingersSpeed() {
+        Lens l = lens();
+        l.pinch(4f, 0f, 0f, 0f, 0f, 0f);
+        l.pinchEnd(0f, 0f);
+        settle(l);
+        l.grab(0L);
+        l.release(2000f, 0f);
+        l.step(1f / 60f);
+        assertTrue(l.pose().x() > 20f, "carried on at the speed it was let go: " + l.pose().x());
+        settle(l);
+        assertTrue(l.still());
+    }
+
+    @Test
+    void aDoubleTapGoesFromFittedToActualPixelsAndBack() {
+        Lens l = lens();                    // 800px fitted, of a 2400px picture: its own pixels are 3x
+        l.fitOrActual(l.actual(2400), 0f, 0f);
+        settle(l);
+        assertEquals(3f, l.pose().zoom(), 1e-3f);
+        l.fitOrActual(l.actual(2400), 0f, 0f);
+        settle(l);
+        assertEquals(1f, l.pose().zoom(), 1e-3f);
+
+        l.fitOrActual(l.actual(800), 0f, 0f);   // already its own size: twice it, so the tap does something
+        settle(l);
+        assertEquals(2f, l.pose().zoom(), 1e-3f);
+    }
 }
