@@ -79,8 +79,9 @@ import java.util.function.Function;
  *
  * <p><b>The picture can be looked at closely</b> ({@link Lens}): the wheel zooms about the pointer, a drag moves the
  * picture, Ctrl and a drag turn it to any angle about its centre, Shift and the wheel turn it a little, R and Shift+R
- * turn it a quarter, H and V mirror it left and right or top and bottom as it is seen, and a double click fits it
- * again. The Turn menu has the quarter turns and the mirrors too, and puts it back as the file is: upright, not
+ * turn it a quarter, H and V mirror it left and right or top and bottom as it is seen, and a double click or 0 fits it
+ * again. Where the host {@linkplain Host#fullscreens offers full screen}, the double click is full screen instead, as
+ * is F11, and Escape comes back ({@link #fullscreen}); 0 still fits. The Turn menu has the quarter turns and the mirrors too, and puts it back as the file is: upright, not
  * mirrored, fitted. It is held where it can be seen: no larger than the stage, it stays inside; larger, it keeps at
  * least a quarter of the stage covered, and pulled past that it springs back with the momentum it had. Another
  * picture starts fitted, upright and not mirrored.
@@ -130,6 +131,22 @@ public final class PictureViewer {
 
         /** Open something else: a click on the words, or Enter or Space on them. Only called when {@link #opens}. */
         default void open() {
+        }
+
+        /**
+         * Whether a double click on the picture, and F11, put the viewer's window full screen, rather than the double
+         * click fitting the picture. Asked once, when the viewer is built. No by default: Vexplore's viewer is a
+         * window beside the explorer.
+         */
+        default boolean fullscreens() {
+            return false;
+        }
+
+        /**
+         * Put the viewer's window full screen, or back. The viewer has already hidden its title bar, or shown it.
+         * Only called when {@link #fullscreens}.
+         */
+        default void fullscreen(boolean on) {
         }
 
         /**
@@ -229,6 +246,9 @@ public final class PictureViewer {
     private final KronoGui krono;
     private final Host host;
     private final boolean opens;
+    /** Whether a double click puts the window full screen ({@link Host#fullscreens}), and whether it is. */
+    private final boolean fullscreens;
+    private volatile boolean fullscreen;
     private final ImageView image;
     private final TitleBar bar;
     private final Node name;
@@ -345,6 +365,7 @@ public final class PictureViewer {
         this.host = host;
         this.bar = bar;
         this.opens = host.opens();
+        this.fullscreens = host.fullscreens();
 
         this.name = text("", SuiteType.BODY, Role.INK, SuiteType.UI);
         this.info = text("", SuiteType.SMALL, SuiteLook.TEXT, SuiteType.MONO);
@@ -480,7 +501,7 @@ public final class PictureViewer {
         gui.onClick(image.node(), this::closeMenu);
         gui.cursor(image.node(), CursorShape.GRAB);
         gui.onDragUi(image.node(), this::drag);
-        gui.onDoubleClick(image.node(), () -> look(Lens::fit));
+        gui.onDoubleClick(image.node(), fullscreens ? () -> fullscreen(!fullscreen) : () -> look(Lens::fit));
         image.onFit(() -> look(l -> l.measure(image.fitted())));
         image.onPlayback(this::showTransport);
         this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
@@ -503,13 +524,21 @@ public final class PictureViewer {
                 Gesture.swipe(3, Gesture.Motion.SWIPE_LEFT)).on(() -> host.step(1));
         keys.action("view.first", "First picture", Shortcut.of(Key.HOME)).on(() -> host.step(Integer.MIN_VALUE));
         keys.action("view.last", "Last picture", Shortcut.of(Key.END)).on(() -> host.step(Integer.MAX_VALUE));
-        keys.action("view.close", "Close the menu, or the viewer", Shortcut.of(Key.ESCAPE)).on(() -> {
+        keys.action("view.close", fullscreens ? "Close the menu, leave full screen, or close the viewer"
+                : "Close the menu, or the viewer", Shortcut.of(Key.ESCAPE)).on(() -> {
             if (open != null) {
                 closeMenu();
+            } else if (fullscreen) {
+                fullscreen(false);
             } else {
                 host.close();
             }
         });
+        if (fullscreens) {
+            keys.action("view.fullscreen", "Full screen, or back", Shortcut.of(Key.F11))
+                    .on(() -> fullscreen(!fullscreen));
+        }
+        keys.action("view.fit", "Fit the picture to the window", Shortcut.of(Key.DIGIT_0)).on(() -> look(Lens::fit));
         keys.action("view.fit-or-actual", "Fit, or the picture's own pixels", Gesture.doubleTap(2))
                 .on(this::fitOrActual);
         keys.action("view.turn-right", "Turn a quarter right", Shortcut.of(Key.R)).on(() -> look(l -> l.quarter(1)));
@@ -591,6 +620,30 @@ public final class PictureViewer {
             closeMenu();
             reveal();
         }
+    }
+
+    /**
+     * Full screen, or back: the title bar hidden, so the picture and the controls over it have the whole screen, and
+     * the host asked to cover the screen with the window. A double click, F11, or Escape to come back. Nothing, unless
+     * the host {@linkplain Host#fullscreens offers it}. From any thread.
+     */
+    public void fullscreen(boolean on) {
+        if (!fullscreens) {
+            return;
+        }
+        synchronized (this) {
+            if (fullscreen == on) {
+                return;
+            }
+            fullscreen = on;
+        }
+        bar.node().visible(!on);
+        host.fullscreen(on);
+    }
+
+    /** Whether the viewer is full screen. */
+    public boolean fullscreen() {
+        return fullscreen;
     }
 
     /** Draw {@code s}: the words at once, the picture when it is given. */
