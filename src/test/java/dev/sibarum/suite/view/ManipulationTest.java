@@ -15,6 +15,8 @@ class ManipulationTest {
 
     private final Manipulation m = new Manipulation();
     private final List<Manipulation.Out> out = new ArrayList<>();
+    /** Whether the picture is turned off a quarter as the fingers begin. */
+    private boolean askew;
 
     /** Two fingers about {@code (cx, cy)}, {@code r} mm from it, the pair at {@code deg} degrees, at {@code ms}. */
     private void two(double cx, double cy, double r, double deg, long ms) {
@@ -22,11 +24,11 @@ class ManipulationTest {
         double dx = r * Math.cos(a);
         double dy = r * Math.sin(a);
         out.addAll(m.feed(List.of(new TouchpadContact(1, cx - dx, cy - dy, 0, 0),
-                new TouchpadContact(2, cx + dx, cy + dy, 0, 0)), ms * 1_000_000L));
+                new TouchpadContact(2, cx + dx, cy + dy, 0, 0)), ms * 1_000_000L, askew));
     }
 
     private void lift(long ms) {
-        out.addAll(m.feed(List.of(), ms * 1_000_000L));
+        out.addAll(m.feed(List.of(), ms * 1_000_000L, askew));
     }
 
     private List<Manipulation.Moved> moves() {
@@ -57,15 +59,33 @@ class ManipulationTest {
     }
 
     @Test
-    void aTwistShortOfAnEighthIsNoTurnAndPastItCatchesUp() {
-        for (int d = 0; d <= 40; d += 5) {
+    void aTwistShortOfThirtyDegreesIsNoTurnAndPastItCatchesUp() {
+        for (int d = 0; d <= 25; d += 5) {
             two(50, 35, 15, d, d);
         }
-        assertEquals(0.0, turn(), 1e-9, "forty degrees is not a turn yet");
-        two(50, 35, 15, 50, 50);
-        assertEquals(Math.toRadians(50), turn(), 1e-9, "past forty-five, all of it, at once");
-        two(50, 35, 15, 60, 60);
-        assertEquals(Math.toRadians(60), turn(), 1e-9, "and from then on, as it goes");
+        assertEquals(0.0, turn(), 1e-9, "twenty-five degrees is not a turn yet");
+        two(50, 35, 15, 35, 35);
+        assertEquals(Math.toRadians(35), turn(), 1e-9, "past thirty, all of it, at once");
+        two(50, 35, 15, 45, 45);
+        assertEquals(Math.toRadians(45), turn(), 1e-9, "and from then on, as it goes");
+    }
+
+    @Test
+    void aSmoothTwistOfSixtyDegreesTurnsSixty() {
+        for (int i = 0; i <= 37; i++) {
+            two(50, 35, 12, 60.0 * i / 37, 8L * i);
+        }
+        lift(310);
+        assertEquals(Math.toRadians(60), turn(), 1e-6);
+    }
+
+    @Test
+    void onAPictureAlreadyAskewTheTurnIsImmediate() {
+        askew = true;
+        two(50, 35, 15, 0, 0);
+        two(50, 35, 15, 10, 8);
+        two(50, 35, 15, 15, 16);
+        assertEquals(Math.toRadians(15), turn(), 1e-9, "every degree, from the first");
     }
 
     @Test
@@ -90,7 +110,7 @@ class ManipulationTest {
     @Test
     void theFingersOfAThreeFingerSwipeLiftingAreNotAPan() {
         out.addAll(m.feed(List.of(new TouchpadContact(1, 30, 35, 0, 0), new TouchpadContact(2, 45, 35, 0, 0),
-                new TouchpadContact(3, 60, 35, 0, 0)), 0));
+                new TouchpadContact(3, 60, 35, 0, 0)), 0, false));
         two(30, 35, 15, 0, 8);
         two(50, 35, 15, 0, 16);
         assertEquals(List.of(), out, "after three, two begin nothing until at most one is left");

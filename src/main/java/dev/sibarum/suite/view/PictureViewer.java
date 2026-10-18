@@ -542,7 +542,11 @@ public final class PictureViewer {
                     liftedNanos = System.nanoTime();
                 }
                 fingers = t.contacts().size();
-                for (Manipulation.Out out : manipulation.feed(t.contacts(), t.timestampNanos())) {
+                boolean askew;
+                synchronized (lens) {
+                    askew = lens.askew();
+                }
+                for (Manipulation.Out out : manipulation.feed(t.contacts(), t.timestampNanos(), askew)) {
                     manipulated(out);
                 }
             }

@@ -16,12 +16,13 @@ import java.util.List;
  *   <li><b>The zoom joins</b> once the fingers' spread has changed by at least half as far as their centre has
  *       travelled, and at least {@link #START_MM}: tactroller's own test for a pinch, applied to the whole gesture
  *       rather than to its first few millimetres, so a long pan needs a deliberate spread before it zooms.</li>
- *   <li><b>The turn joins</b> once the fingers have twisted {@link #TURN_GATE} — an eighth of a turn. Nothing less
- *       is a turn on purpose.</li>
+ *   <li><b>The turn joins</b> once the fingers have twisted {@link #TURN_GATE}, 30°. Nothing less is a turn on
+ *       purpose — unless the picture is already turned off a quarter, when there is nothing for a wobble to
+ *       disturb and the turn is the fingers' from the start ({@code turnFree}).</li>
  * </ul>
  *
  * <p>Joining, each catches up: the first step after it joins carries all the zoom or turn the fingers had made
- * until then, so the picture is turned as far as the hand is, not lagging an eighth behind it. The view smooths
+ * until then, so the picture is turned as far as the hand is, not lagging 30° behind it. The view smooths
  * that in ({@link Lens}).
  *
  * <p>When the fingers lift, a pure pan leaves with the speed they were going; one that zoomed or turned does not,
@@ -33,8 +34,8 @@ final class Manipulation {
 
     /** How far the fingers move, in millimetres on the pad, before they are a manipulation at all. */
     static final double START_MM = 2.0;
-    /** How far the fingers twist, in radians, before the picture turns with them: an eighth of a turn. */
-    static final double TURN_GATE = Math.PI / 4;
+    /** How far the fingers twist, in radians, before the picture turns with them: a twelfth of a turn. */
+    static final double TURN_GATE = Math.PI / 6;
     /** The window the fingers' leaving speed is measured over. */
     private static final long VELOCITY_NANOS = 100_000_000L;
 
@@ -87,8 +88,11 @@ final class Manipulation {
         return phase == Phase.ACTIVE;
     }
 
-    /** The contacts on the pad now, at {@code nanos}: what the fingers did since the last. */
-    List<Out> feed(List<TouchpadContact> contacts, long nanos) {
+    /**
+     * The contacts on the pad now, at {@code nanos}: what the fingers did since the last. {@code turnFree} says the
+     * picture is already turned off a quarter, so a manipulation beginning now turns with the fingers at once.
+     */
+    List<Out> feed(List<TouchpadContact> contacts, long nanos, boolean turnFree) {
         List<Out> out = new ArrayList<>(2);
         if (contacts.size() <= 1) {
             armed = true;
@@ -124,6 +128,7 @@ final class Manipulation {
                 return out;
             }
             phase = Phase.ACTIVE;
+            turning = turnFree;
             out.add(new Began());
             sample(base[0], base[1], nanos);
         }

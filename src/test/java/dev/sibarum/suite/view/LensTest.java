@@ -269,18 +269,40 @@ class LensTest {
     }
 
     @Test
-    void lettingGoNearAQuarterTurnSettlesOntoItAndAskewStays() {
-        Lens near = lens();
-        near.touch(0f, 0f, 1.5f, 85f, 0f, 0f);
-        near.touchEnd(0f, 0f, 0f, 0f);
-        settle(near);
-        assertEquals(90f, near.pose().degrees(), 1e-3f);
+    void aTwistLetGoAnywhereSettlesOntoTheNearestQuarter() {
+        for (float[] turn : new float[][] {{85f, 90f}, {30f, 0f}, {60f, 90f}, {-140f, -180f}}) {
+            Lens l = lens();
+            l.touch(0f, 0f, 1.5f, turn[0], 0f, 0f);
+            l.touchEnd(0f, 0f, 0f, 0f);
+            settle(l);
+            assertEquals(turn[1], l.pose().degrees(), 1e-3f, "turned " + turn[0]);
+        }
+    }
 
-        Lens askew = lens();
-        askew.touch(0f, 0f, 1.5f, 30f, 0f, 0f);
-        askew.touchEnd(0f, 0f, 0f, 0f);
-        settle(askew);
-        assertEquals(30f, askew.pose().degrees(), 1e-3f);
+    @Test
+    void theSettlingTurnIsAboutTheFingersPointNotThePicturesCentre() {
+        Lens l = lens();
+        l.touch(0f, 0f, 3f, 60f, 100f, 0f);   // the fingers 100px right of the centre: three times, and 60 degrees
+        follow(l);
+        l.touchEnd(0f, 0f, 100f, 0f);
+        settle(l);
+        Pose p = l.pose();
+        assertEquals(90f, p.degrees(), 1e-3f);
+        // The centre, 300px left of the fingers once tripled, a quarter turn clockwise about them: 300px above.
+        assertEquals(100f, p.x(), 0.5f);
+        assertEquals(-300f, p.y(), 0.5f);
+    }
+
+    @Test
+    void anAskewPictureThatIsOnlyPannedKeepsItsAngle() {
+        Lens l = lens();
+        l.turn(5f);   // 25 degrees, from the wheel
+        settle(l);
+        assertTrue(l.askew());
+        l.touch(30f, 0f, 1f, 0f, 0f, 0f);
+        l.touchEnd(0f, 0f, 0f, 0f);
+        settle(l);
+        assertEquals(25f, l.pose().degrees(), 1e-3f);
     }
 
     @Test

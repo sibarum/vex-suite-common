@@ -54,8 +54,6 @@ final class Lens {
     private static final float STILL = 6f;
     /** The longest physics step: a stalled frame is taken in pieces, so the spring never blows up. */
     private static final float SUBSTEP = 1f / 120f;
-    /** Within this of a quarter turn, in degrees, a pinch that lets go settles onto the quarter. */
-    static final float SNAP_DEGREES = 8f;
     /** Within this fraction of the size it fits at, a pinch that lets go settles onto fitted. */
     static final float SNAP_FIT = 0.06f;
     /** How stiffly a pinch past the zoom limits resists: the share of each further doubling asked for it gives. */
@@ -109,6 +107,8 @@ final class Lens {
     private float touchZoom;
     private boolean touchZoomed;
     private boolean touchTurned;
+    /** The turn still easing after the fingers lift is about the anchor, where they were, not the picture's centre. */
+    private boolean turnAbout;
 
     /** The pose to draw. */
     Pose pose() {
@@ -122,6 +122,7 @@ final class Lens {
 
     /** Back to rest: fitted, centred, upright, not mirrored, still. For a new picture. */
     void reset() {
+        turnAbout = false;
         zoom = zoomGoal = 1f;
         x = y = vx = vy = 0f;
         degrees = degreesGoal = 0f;
@@ -169,6 +170,7 @@ final class Lens {
 
     /** Fitted again, the way it is turned, and back to the centre: a double click. */
     void fit() {
+        turnAbout = false;
         fitting = true;
         homing = true;
         zoomGoal = fitZoom(baseW, baseH, stageW, stageH, degreesGoal);
@@ -178,6 +180,7 @@ final class Lens {
 
     /** A quarter turn, clockwise for 1 and back for -1, from the nearest quarter. A fitted picture is refitted. */
     void quarter(int direction) {
+        turnAbout = false;
         degreesGoal = Math.round(degreesGoal / 90f) * 90f + 90f * Integer.signum(direction);
         if (fitting) {
             zoomGoal = fitZoom(baseW, baseH, stageW, stageH, degreesGoal);
@@ -194,6 +197,7 @@ final class Lens {
      * easing, which would spin it through every angle between. Its size and place stay as they are.
      */
     void mirror(boolean across) {
+        turnAbout = false;
         if (across) {
             mirrorX = !mirrorX;
         } else {
@@ -226,11 +230,13 @@ final class Lens {
 
     /** A fine turn by {@code notches} of the wheel, clockwise for positive. */
     void turn(float notches) {
+        turnAbout = false;
         degreesGoal += notches * NOTCH_DEGREES;
     }
 
     /** The hand takes the picture, at {@code nanos}. */
     void grab(long nanos) {
+        turnAbout = false;
         dragging = true;
         homing = false;
         // Taken where it is, which may be past the limit still, on its way back: the hand is where it would
@@ -283,6 +289,7 @@ final class Lens {
 
     /** A twist starts with the pointer at {@code (px, py)}. */
     void twistFrom(float px, float py) {
+        turnAbout = false;
         twisting = true;
         twistFrom = twistAt = angle(px, py);
         twistStart = degreesGoal;
@@ -306,6 +313,7 @@ final class Lens {
      * back, easing to a zoom. From here it follows them, smoothed ({@link #FOLLOW}).
      */
     void touchStart() {
+        turnAbout = false;
         touching = true;
         touchZoomed = touchTurned = false;
         homing = false;
@@ -354,9 +362,10 @@ final class Lens {
     /**
      * The fingers lift, leaving at {@code (fx, fy)} px a second, the pointer at {@code (px, py)}. The picture keeps
      * that speed, caught by the limit's spring as any fling is; comes back inside the zoom limits if pulled past
-     * them; settles onto the nearest quarter turn if it was turned to within {@link #SNAP_DEGREES} of one; and is
-     * fitted if it was zoomed to within {@link #SNAP_FIT} of the size it fits at — each eased from where it was.
-     * A picture left at an odd angle, or zoomed well off its fit, stays as it was put.
+     * them; settles onto the nearest quarter turn if the fingers turned it at all, wherever they left it; and is
+     * fitted if it was zoomed to within {@link #SNAP_FIT} of the size it fits at — each eased from where it was. A
+     * picture zoomed well off its fit stays the size it was put; one left askew by Ctrl and a drag, or Shift and the
+     * wheel, and not turned by the fingers, stays at its angle.
      */
     void touchEnd(float fx, float fy, float px, float py) {
         if (!touching) {
@@ -369,10 +378,8 @@ final class Lens {
         anchorX = px;
         anchorY = py;
         if (touchTurned) {
-            float quarter = Math.round(degreesGoal / 90f) * 90f;
-            if (Math.abs(degreesGoal - quarter) <= SNAP_DEGREES) {
-                degreesGoal = quarter;
-            }
+            degreesGoal = Math.round(degreesGoal / 90f) * 90f;
+            turnAbout = true;   // the rest of the turn is about the fingers' point too, so it stays where it was
         }
         float fit = fitZoom(baseW, baseH, stageW, stageH, degreesGoal);
         if (touchZoomed && degreesGoal % 90f == 0f && Math.abs(zoomGoal / fit - 1f) <= SNAP_FIT) {
@@ -380,6 +387,12 @@ final class Lens {
             return;
         }
         zoomGoal = clamp(zoomGoal, MIN_ZOOM, MAX_ZOOM);
+    }
+
+    /** Whether the picture is turned off a quarter: by Ctrl and a drag, or Shift and the wheel. */
+    boolean askew() {
+        float q = Math.round(degreesGoal / 90f) * 90f;
+        return Math.abs(degreesGoal - q) > 0.01f;
     }
 
     /** Whether two fingers have the picture. */
@@ -603,7 +616,21 @@ final class Lens {
         }
         if (degrees != degreesGoal && !twisting) {
             float d = degrees + (degreesGoal - degrees) * (1f - (float) Math.exp(-dt / TURN_EASE));
-            degrees = Math.abs(degreesGoal - d) < 0.02f ? degreesGoal : d;
+            d = Math.abs(degreesGoal - d) < 0.02f ? degreesGoal : d;
+            if (turnAbout) {
+                // Turned about the anchor, as the fingers were turning it, not about the picture's own centre.
+                double r = Math.toRadians(d - degrees);
+                float cos = (float) Math.cos(r);
+                float sin = (float) Math.sin(r);
+                float ox = x - anchorX;
+                float oy = y - anchorY;
+                x = anchorX + ox * cos - oy * sin;
+                y = anchorY + ox * sin + oy * cos;
+            }
+            degrees = d;
+        }
+        if (degrees == degreesGoal) {
+            turnAbout = false;
         }
         if (!dragging) {
             float[] ax = axis(x, vx, limit(true), dt);
