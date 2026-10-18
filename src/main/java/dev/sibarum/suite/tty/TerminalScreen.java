@@ -36,6 +36,13 @@ public final class TerminalScreen implements AutoCloseable {
 
     private static final Color SELECTION = Color.argb(0xA0264F78);
 
+    /**
+     * How long after a resize what the pseudoconsole sends is taken for its repaint of the new size rather than the
+     * program writing (see {@link #wrote}). Its repaint takes a frame or two; the margin is wide because mistaking a
+     * repaint for a write is the error that matters, and mistaking a write for a repaint costs only a row a while.
+     */
+    private static final long REPAINT_NANOS = 500_000_000L;
+
     private final Gui gui;
     private final Terminal term;
     private final GlyphLayout glyphs;
@@ -51,6 +58,17 @@ public final class TerminalScreen implements AutoCloseable {
     /** The node's content area as last laid out. */
     private volatile float boxW, boxH;
     private volatile boolean active;
+
+    /** A Windows pseudoconsole is behind the terminal: see {@link #pseudoconsole}. */
+    private volatile boolean pseudoconsole;
+    /** How many rows the terminal had when the program last wrote; zero until it first does. */
+    private volatile int wroteAtRows;
+    /** When the terminal was last resized, in nanos. */
+    private volatile long resizedAt;
+    /** A row is being held back (see {@link #pseudoconsole}), and the next write gives it back. */
+    private volatile boolean heldBack;
+    /** The program has written while a row was held back: the frame loop refits. */
+    private final AtomicBoolean refitDue = new AtomicBoolean();
 
     private volatile int scrollOffset;
     private volatile boolean hasSel;
@@ -95,6 +113,36 @@ public final class TerminalScreen implements AutoCloseable {
         return this;
     }
 
+    /**
+     * A Windows pseudoconsole is behind the terminal, and the owner calls {@link #wrote} each time it feeds the
+     * terminal what the pseudoconsole sent.
+     *
+     * <p>Conhost, behind the pseudoconsole, keeps its own screen and has a flaw this works around. Shrink it past
+     * the cursor and grow it back to the height it had when the program last wrote, and it draws the grown screen
+     * one way and puts its cursor back where it was before the shrink: the program's next write lands rows below
+     * the line the terminal shows, past a band of blank ones. Any other height, or the same height after the program
+     * has written at another, keeps the two in step. So a fit that would land on that height stops a row short, and
+     * the program's next write (a keystroke's echo will do) gives the row back.
+     */
+    public TerminalScreen pseudoconsole() {
+        pseudoconsole = true;
+        return this;
+    }
+
+    /**
+     * The program has written, and the terminal has been fed it: the picture is stale. What a pseudoconsole sends
+     * just after a resize is its repaint, not the program, and does not count. Any thread.
+     */
+    public void wrote() {
+        if (System.nanoTime() - resizedAt > REPAINT_NANOS) {
+            wroteAtRows = term.rows();
+            if (heldBack) {
+                refitDue.set(true);
+            }
+        }
+        invalidate();
+    }
+
     public Node node() {
         return node;
     }
@@ -131,6 +179,9 @@ public final class TerminalScreen implements AutoCloseable {
 
     /** On the frame loop's thread, once a frame. */
     public void tick() {
+        if (refitDue.getAndSet(false)) {
+            refit();
+        }
         if (active && dirty.getAndSet(false)) {
             render();
         }
@@ -288,7 +339,13 @@ public final class TerminalScreen implements AutoCloseable {
         }
         int cols = Math.max(2, (int) (boxW / cw));
         int rows = Math.max(1, (int) (boxH / lineH));
+        // The pseudoconsole's flaw (see pseudoconsole()): not back to the height the program last wrote at.
+        heldBack = pseudoconsole && rows > 1 && rows == wroteAtRows && term.rows() != rows;
+        if (heldBack) {
+            rows--;
+        }
         if (cols != term.cols() || rows != term.rows()) {
+            resizedAt = System.nanoTime();
             term.resize(cols, rows);
             onFit.accept(cols, rows);
             invalidate();
