@@ -60,6 +60,11 @@ final class Lens {
     static final float SNAP_FIT = 0.06f;
     /** How stiffly a pinch past the zoom limits resists: the share of each further doubling asked for it gives. */
     private static final float ZOOM_BAND = 0.25f;
+    /**
+     * How closely the picture follows two fingers: the time constant, in seconds, of its chase after where they
+     * want it. Long enough to smooth a touchpad's jitter away, short enough that it still feels held.
+     */
+    static final float FOLLOW = 0.05f;
 
     // The measures, from the view.
     private float stageW;
@@ -98,9 +103,12 @@ final class Lens {
     private float twistStart;
     /** Where the pointer is in the twist in hand, in degrees about the picture's centre. */
     private float twistAt;
-    // A pinch in hand: the zoom the fingers ask for, before the band at the limits.
-    private boolean pinching;
-    private float pinchZoom;
+    // Two fingers in hand: the zoom they ask for, before the band at the limits, and whether they zoomed or turned.
+    // Where they want the picture is the hand (handX, handY) and the goals (zoomGoal, degreesGoal).
+    private boolean touching;
+    private float touchZoom;
+    private boolean touchZoomed;
+    private boolean touchTurned;
 
     /** The pose to draw. */
     Pose pose() {
@@ -120,7 +128,7 @@ final class Lens {
         mirrorX = mirrorY = false;
         fitting = true;
         homing = false;
-        dragging = twisting = pinching = false;
+        dragging = twisting = touching = false;
     }
 
     /**
@@ -264,21 +272,6 @@ final class Lens {
         cap();
     }
 
-    /**
-     * The hand lets go moving at {@code (fx, fy)} px a second. A touchpad says how fast the fingers were going as
-     * they left, which is better than the picture's own reckoning from its last few moves, and says 0 when they
-     * had come to rest. The limit's spring still catches it, as it does any fling.
-     */
-    void release(float fx, float fy) {
-        if (!dragging) {
-            return;
-        }
-        dragging = false;
-        vx = fx;
-        vy = fy;
-        cap();
-    }
-
     /** The fling no faster than {@link #FLING_MAX}. */
     private void cap() {
         float speed = (float) Math.hypot(vx, vy);
@@ -309,68 +302,89 @@ final class Lens {
     }
 
     /**
-     * Fingers pinch the picture: it is in hand, where it is, and stops whatever it was doing — easing, gliding,
-     * springing back. From here it is wherever the fingers put it, each frame, with nothing to ease.
+     * Two fingers take the picture: it is theirs, where it is, and stops whatever it was doing — gliding, springing
+     * back, easing to a zoom. From here it follows them, smoothed ({@link #FOLLOW}).
      */
-    void pinchStart() {
-        pinching = true;
-        fitting = false;
+    void touchStart() {
+        touching = true;
+        touchZoomed = touchTurned = false;
         homing = false;
+        dragging = false;
         vx = vy = 0f;
         zoomGoal = zoom;
         degreesGoal = degrees;
-        pinchZoom = zoom;
+        touchZoom = zoom;
+        handX = hand(x, limit(true), stageW);
+        handY = hand(y, limit(false), stageH);
     }
 
     /**
-     * The fingers spread by {@code scale}, turned {@code turn} degrees clockwise and moved {@code (dx, dy)}, about
-     * {@code (px, py)}: the picture is scaled and turned about that point, which stays under the fingers, and
-     * carried along with them. Past the zoom limits it gives against the fingers instead of stopping dead.
+     * The fingers moved {@code (dx, dy)} px, spread by {@code scale} and turned {@code turn} degrees clockwise, about
+     * {@code (px, py)}: where they want the picture moves with them — scaled and turned about that point, which
+     * stays under them — and the picture follows it, a few hundredths of a second behind, so the pad's jitter is
+     * smoothed away and a turn or zoom that joins late is caught up rather than jumped to. Past the zoom limits it
+     * gives against the fingers instead of stopping dead, and past the stage's, as a drag does.
      */
-    void pinch(float scale, float turn, float dx, float dy, float px, float py) {
+    void touch(float dx, float dy, float scale, float turn, float px, float py) {
         if (!measured()) {
             return;
         }
-        if (!pinching) {
-            pinchStart();
+        if (!touching) {
+            touchStart();
         }
-        pinchZoom *= scale;
-        float z = bandZoom(pinchZoom);
-        float k = z / zoom;
+        if (scale != 1f || turn != 0f) {
+            fitting = false;
+            touchZoomed |= scale != 1f;
+            touchTurned |= turn != 0f;
+        }
+        touchZoom *= scale;
+        float z = bandZoom(touchZoom);
+        float k = z / zoomGoal;
         double r = Math.toRadians(turn);
         float cos = (float) Math.cos(r);
         float sin = (float) Math.sin(r);
-        float ox = (x - px) * k;
-        float oy = (y - py) * k;
-        x = px + ox * cos - oy * sin + dx;
-        y = py + ox * sin + oy * cos + dy;
-        zoom = zoomGoal = z;
-        degrees = degreesGoal = degrees + turn;
+        float ox = (handX - px) * k;
+        float oy = (handY - py) * k;
+        handX = px + ox * cos - oy * sin + dx;
+        handY = py + ox * sin + oy * cos + dy;
+        zoomGoal = z;
+        degreesGoal += turn;
     }
 
     /**
-     * The fingers lift, the pointer at {@code (px, py)}: back inside the zoom limits if pulled past them, onto the
-     * nearest quarter turn within {@link #SNAP_DEGREES}, and fitted if it is then within {@link #SNAP_FIT} of the
-     * size it fits at — each eased, from where the fingers left it. A picture left at an odd angle, or zoomed well
-     * off its fit, stays as it was put.
+     * The fingers lift, leaving at {@code (fx, fy)} px a second, the pointer at {@code (px, py)}. The picture keeps
+     * that speed, caught by the limit's spring as any fling is; comes back inside the zoom limits if pulled past
+     * them; settles onto the nearest quarter turn if it was turned to within {@link #SNAP_DEGREES} of one; and is
+     * fitted if it was zoomed to within {@link #SNAP_FIT} of the size it fits at — each eased from where it was.
+     * A picture left at an odd angle, or zoomed well off its fit, stays as it was put.
      */
-    void pinchEnd(float px, float py) {
-        if (!pinching) {
+    void touchEnd(float fx, float fy, float px, float py) {
+        if (!touching) {
             return;
         }
-        pinching = false;
-        float quarter = Math.round(degrees / 90f) * 90f;
-        if (Math.abs(degrees - quarter) <= SNAP_DEGREES) {
-            degreesGoal = quarter;
+        touching = false;
+        vx = fx;
+        vy = fy;
+        cap();
+        anchorX = px;
+        anchorY = py;
+        if (touchTurned) {
+            float quarter = Math.round(degreesGoal / 90f) * 90f;
+            if (Math.abs(degreesGoal - quarter) <= SNAP_DEGREES) {
+                degreesGoal = quarter;
+            }
         }
         float fit = fitZoom(baseW, baseH, stageW, stageH, degreesGoal);
-        if (degreesGoal % 90f == 0f && Math.abs(zoom / fit - 1f) <= SNAP_FIT) {
+        if (touchZoomed && degreesGoal % 90f == 0f && Math.abs(zoomGoal / fit - 1f) <= SNAP_FIT) {
             fit();
             return;
         }
-        zoomGoal = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
-        anchorX = px;
-        anchorY = py;
+        zoomGoal = clamp(zoomGoal, MIN_ZOOM, MAX_ZOOM);
+    }
+
+    /** Whether two fingers have the picture. */
+    boolean touching() {
+        return touching;
     }
 
     /**
@@ -433,15 +447,20 @@ final class Lens {
         if (!measured()) {
             return false;
         }
-        // In the hand or the fingers, the picture moves only as they do: its velocity is kept for the release.
+        if (touching) {
+            // Following the fingers: moving until it is where they want it.
+            return zoom != zoomGoal || degrees != degreesGoal
+                    || x != band(handX, limit(true), stageW) || y != band(handY, limit(false), stageH);
+        }
+        // In the hand, the picture moves only as the hand does: its velocity is kept for the release.
         return zoom != zoomGoal || degrees != degreesGoal
-                || (!dragging && !pinching
+                || (!dragging
                         && (vx != 0f || vy != 0f || x != rest(x, limit(true)) || y != rest(y, limit(false))));
     }
 
     /** Whether it has come to rest: nothing moving and nothing in hand. What a sharper copy waits for. */
     boolean still() {
-        return measured() && !dragging && !twisting && !pinching && !moving();
+        return measured() && !dragging && !twisting && !touching && !moving();
     }
 
     /**
@@ -563,6 +582,10 @@ final class Lens {
     }
 
     private boolean advance(float dt) {
+        if (touching) {
+            follow(dt);
+            return moving();
+        }
         // Zoom eases to its goal about the anchor, which stays put on the stage.
         if (zoom != zoomGoal) {
             float z = zoom + (zoomGoal - zoom) * (1f - (float) Math.exp(-dt / ZOOM_EASE));
@@ -582,7 +605,7 @@ final class Lens {
             float d = degrees + (degreesGoal - degrees) * (1f - (float) Math.exp(-dt / TURN_EASE));
             degrees = Math.abs(degreesGoal - d) < 0.02f ? degreesGoal : d;
         }
-        if (!dragging && !pinching) {
+        if (!dragging) {
             float[] ax = axis(x, vx, limit(true), dt);
             float[] ay = axis(y, vy, limit(false), dt);
             x = ax[0];
@@ -594,6 +617,25 @@ final class Lens {
             }
         }
         return moving();
+    }
+
+    /**
+     * One step of following two fingers: the zoom (by its ratio, so a doubling takes as long at any size), the turn
+     * and the place each close the same share of the way to where the fingers want them, and are there once within
+     * a hair of it. Closing together keeps the point under the fingers about where it was.
+     */
+    private void follow(float dt) {
+        float a = 1f - (float) Math.exp(-dt / FOLLOW);
+        float z = zoom * (float) Math.pow(zoomGoal / zoom, a);
+        zoom = Math.abs(zoomGoal - z) < 1e-4f * zoomGoal ? zoomGoal : z;
+        float d = degrees + (degreesGoal - degrees) * a;
+        degrees = Math.abs(degreesGoal - d) < 0.02f ? degreesGoal : d;
+        float bx = band(handX, limit(true), stageW);
+        float by = band(handY, limit(false), stageH);
+        float nx = x + (bx - x) * a;
+        float ny = y + (by - y) * a;
+        x = Math.abs(bx - nx) < 0.05f ? bx : nx;
+        y = Math.abs(by - ny) < 0.05f ? by : ny;
     }
 
     /** One axis, one step: the spring outside the limit (or towards the centre, homing), the glide inside. */

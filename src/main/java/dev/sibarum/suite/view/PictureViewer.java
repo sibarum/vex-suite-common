@@ -34,7 +34,6 @@ import dev.vexelray.gui.widget.TitleBar;
 import sibarum.kronometer.Dur;
 import sibarum.kronometer.Time;
 import sibarum.kronometer.anim.Ease;
-import sibarum.tactroller.api.GestureEvent;
 import sibarum.tactroller.api.InputEvent;
 import sibarum.tactroller.api.Key;
 import sibarum.tactroller.api.Modifier;
@@ -282,10 +281,14 @@ public final class PictureViewer {
     private final Sharpen sharpen;
     /** Whether the drag in hand turns the picture rather than moving it: Ctrl was held as it started. */
     private volatile boolean twisting;
-    /** What two fingers on the touchpad are doing to the picture, or null; and the point a pinch is about. */
-    private volatile GestureEvent.Kind touch;
-    private volatile float touchX;
-    private volatile float touchY;
+    /**
+     * Two fingers on the touchpad, as one manipulation; whether the one in progress is the picture's (it began over
+     * it, not over a control or a menu); and the point it zooms and turns about. The input subscriber's alone.
+     */
+    private final Manipulation manipulation = new Manipulation();
+    private boolean touched;
+    private float touchX;
+    private float touchY;
     /** How many fingers are on the touchpad, and when the last one lifted: the OS makes a wheel of them. */
     private volatile int fingers;
     private volatile long liftedNanos;
@@ -530,15 +533,18 @@ public final class PictureViewer {
         // per-node wheel hook, so the wheel over the picture is read there too. The touchpad's fingers are counted
         // here, because the OS makes a wheel of them that is not one.
         gui.bus().subscribe(InputTopics.INPUT, e -> {
+            if (e instanceof InputEvent.PointerMoved m) {
+                pointerX = m.x();
+                pointerY = m.y();
+            }
             if (e instanceof InputEvent.TouchpadChanged t) {
                 if (t.contacts().isEmpty() && fingers > 0) {
                     liftedNanos = System.nanoTime();
                 }
                 fingers = t.contacts().size();
-            }
-            if (e instanceof InputEvent.PointerMoved m) {
-                pointerX = m.x();
-                pointerY = m.y();
+                for (Manipulation.Out out : manipulation.feed(t.contacts(), t.timestampNanos())) {
+                    manipulated(out);
+                }
             }
             if (e instanceof InputEvent.Scrolled s) {
                 wheel(s);
@@ -549,7 +555,6 @@ public final class PictureViewer {
                 stir();
             }
         });
-        gui.bus().subscribe(InputTopics.GESTURE, this::gesture);
     }
 
     /**
@@ -933,62 +938,42 @@ public final class PictureViewer {
     }
 
     /**
-     * Two fingers on the touchpad, over the picture: moving together they carry it, as a drag does, and let go of it
-     * at the speed they were going; spreading, pinching and twisting they zoom and turn it about the pointer, which
-     * holds still while they do. A gesture starting over a control or an open menu is not the picture's.
+     * Two fingers on the touchpad, over the picture ({@link Manipulation}): they always carry it, and zoom and turn
+     * it about the pointer once they plainly mean to, the picture following them smoothed ({@link Lens#touch}). It
+     * keeps the speed a pure pan let go of it at. A manipulation beginning over a control or an open menu is not
+     * the picture's. Three fingers are the swipes, which are commands; taps are commands too.
      */
-    private void gesture(GestureEvent g) {
-        if (g.fingers() != 2) {
-            return;   // three are the swipes, which are commands; four and more are the OS's
-        }
-        switch (g) {
-            case GestureEvent.GestureStarted s -> {
-                float[] p = open != null || over.get() != 0 ? null : onStage(s.x(), s.y());
-                if (p == null) {
-                    return;
+    private void manipulated(Manipulation.Out out) {
+        switch (out) {
+            case Manipulation.Began b -> {
+                float[] p = open != null || over.get() != 0 ? null : onStage(pointerX, pointerY);
+                touched = p != null;
+                if (touched) {
+                    touchX = p[0];
+                    touchY = p[1];
+                    look(Lens::touchStart);
                 }
-                touch = s.kind();
-                touchX = p[0];
-                touchY = p[1];
-                long now = System.nanoTime();
-                look(l -> {
-                    if (s.kind() == GestureEvent.Kind.PAN) {
-                        l.grab(now);
-                    } else {
-                        l.pinchStart();
-                    }
-                });
             }
-            case GestureEvent.GestureUpdated u -> {
-                GestureEvent.Kind k = touch;
-                float dx = (float) u.dx() * PX_PER_MM;
-                float dy = (float) u.dy() * PX_PER_MM;
-                if (k == GestureEvent.Kind.PAN) {
-                    long now = System.nanoTime();
-                    look(l -> l.drag(dx, dy, now));
-                } else if (k == GestureEvent.Kind.PINCH) {
-                    float scale = (float) u.scale();
-                    float turn = (float) Math.toDegrees(u.rotation());
+            case Manipulation.Moved m -> {
+                if (touched) {
+                    float dx = (float) m.dx() * PX_PER_MM;
+                    float dy = (float) m.dy() * PX_PER_MM;
+                    float scale = (float) m.scale();
+                    float turn = (float) Math.toDegrees(m.turn());
                     float px = touchX;
                     float py = touchY;
-                    look(l -> l.pinch(scale, turn, dx, dy, px, py));
+                    look(l -> l.touch(dx, dy, scale, turn, px, py));
                 }
             }
-            case GestureEvent.GestureEnded e -> {
-                GestureEvent.Kind k = touch;
-                touch = null;
-                if (k == GestureEvent.Kind.PAN) {
-                    float fx = (float) e.velocityX() * PX_PER_MM;
-                    float fy = (float) e.velocityY() * PX_PER_MM;
-                    look(l -> l.release(fx, fy));
-                } else if (k == GestureEvent.Kind.PINCH) {
+            case Manipulation.Ended e -> {
+                if (touched) {
+                    touched = false;
+                    float fx = (float) e.vx() * PX_PER_MM;
+                    float fy = (float) e.vy() * PX_PER_MM;
                     float px = touchX;
                     float py = touchY;
-                    look(l -> l.pinchEnd(px, py));
+                    look(l -> l.touchEnd(fx, fy, px, py));
                 }
-            }
-            case GestureEvent.Tapped t -> {
-                // Taps are commands, bound in the key map: view.fit-or-actual.
             }
         }
     }
