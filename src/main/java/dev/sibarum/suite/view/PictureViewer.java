@@ -96,12 +96,15 @@ import java.util.function.Function;
  * {@link #TURN}, {@link #BACKGROUND}, {@link #SETTINGS}, {@link #KEEP}, the Turn menu's {@link #TURN_LEFT},
  * {@link #TURN_RIGHT}, {@link #MIRROR_ACROSS}, {@link #MIRROR_DOWN} and {@link #UPRIGHT}, the backdrop swatches {@link #BACKDROP}{@code checker} and so
  * on, the scaling choices {@link #MOVING}{@code lanczos} and {@link #RESTING}{@code lanczos} and so on, and the
- * transport's {@link #PLAY}, {@link #FRAME_BACK}, {@link #FRAME_ON}, {@link #SEEK}, {@link #POSITION} and {@link #LOOP}.
+ * transport's {@link #PLAY}, {@link #FRAME_BACK}, {@link #FRAME_ON}, {@link #SEEK}, {@link #POSITION}, {@link #LOOP},
+ * {@link #MUTE} and {@link #VOLUME}.
  *
  * <p><b>A picture that plays is played like a movie</b> ({@code Playback}): a transport floats above the bar while it
  * is up, with play and pause, a frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with
  * the bar. Space plays and pauses, comma and period step a frame, with Shift a second, and L turns looping on and off.
- * It plays as soon as it is shown, round and round, and holds while the window is not focused.
+ * It plays as soon as it is shown, round and round, and holds while the window is not focused. One with sound (a
+ * video's) has Mute and a volume slider after Loop, and M mutes and unmutes; the level and the mute carry over to the
+ * next picture, and the application keeps them ({@link Host#sounded}) and gives them back ({@link #sound}).
  *
  * <p><b>Settings</b> (the gear) opens a menu of how the picture is scaled: while it moves, by the GPU every frame from
  * its texture, and at rest, made again from the file's own pixels (see {@code Sharpen}). The same filters in each, from
@@ -155,6 +158,13 @@ public final class PictureViewer {
          */
         default void scaled(ImageFilter moving, ImageFilter resting) {
         }
+
+        /**
+         * The user set how loud a picture that plays is heard, from 0 to 1, or muted or unmuted it: the transport's
+         * volume or Mute, or M. Already applied; this is for keeping it.
+         */
+        default void sounded(float volume, boolean muted) {
+        }
     }
 
     /**
@@ -195,13 +205,15 @@ public final class PictureViewer {
     public static final String MOVING = "moving.";
     public static final String RESTING = "resting.";
     /** The transport, shown while the picture plays: play and pause, a frame back and on, the seek bar, the clock,
-     *  and loop. */
+     *  and loop; and for one with sound, mute and the volume. */
     public static final String PLAY = "play";
     public static final String FRAME_BACK = "frame-back";
     public static final String FRAME_ON = "frame-on";
     public static final String SEEK = "seek";
     public static final String POSITION = "position";
     public static final String LOOP = "loop";
+    public static final String MUTE = "mute";
+    public static final String VOLUME = "volume";
     /** How far Shift with comma or period moves the clock, in ms. */
     static final long JUMP_MS = 1000;
 
@@ -273,6 +285,10 @@ public final class PictureViewer {
     private final Node transportLift;
     private final Tile play;
     private final Tile loop;
+    /** Mute and the volume, shown only for a picture with sound ({@link Playback#sounds}), on a slab of their own. */
+    private final Tile mute;
+    private final Slider volume;
+    private final Node sound;
     private final Slider seek;
     private final Node clock;
     /** Everything that fades: the bar, and the two sides. */
@@ -434,8 +450,17 @@ public final class PictureViewer {
         gui.landmark(landmarks + SEEK, seek.node());
         gui.landmark(landmarks + POSITION, clock);
         gui.landmark(landmarks + LOOP, loop.node());
+        this.mute = Tile.of(gui, Icon.VOLUME_HIGH, "Mute").toggle().onPress(this::toggleMute);
+        // Not undoable either: a level, like the seek bar's place. Dragging it is wanting to hear, so it unmutes.
+        this.volume = new Slider(gui, 1f).undoable(false).onChange(v -> slideVolume((float) v))
+                .onCommit(v -> host.sounded(volume(), muted()));
+        volume.node().width(Length.rem(6f));
+        gui.landmark(landmarks + MUTE, mute.node());
+        gui.landmark(landmarks + VOLUME, volume.node());
+        this.sound = gui.row().width(Length.AUTO).height(Length.AUTO).alignItems(AlignItems.CENTER).gap(Tile.GAP)
+                .scroll(false, false).visible(false).children(mute.node(), volume.node());
         Node deck = slab(gui.row()).alignItems(AlignItems.CENTER)
-                .children(back.node(), play.node(), on.node(), seek.node(), clock, loop.node());
+                .children(back.node(), play.node(), on.node(), seek.node(), clock, loop.node(), sound);
         this.transportLift = gui.box().size(Length.dp(1), BAR_ROOM);
         this.transport = gui.column().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
                 .padding(MARGIN).scroll(false, false).floatAt(Length.ZERO, Length.percent(100f)).visible(false)
@@ -557,6 +582,7 @@ public final class PictureViewer {
         keys.action("play.second-on", "A second on", Shortcut.of(Key.PERIOD, Modifier.SHIFT))
                 .on(() -> playback(p -> p.seek(p.position() + JUMP_MS)));
         keys.action("play.loop", "Loop on or off", Shortcut.of(Key.L)).on(() -> playback(p -> p.loop(!p.loop())));
+        keys.action("play.mute", "Mute or unmute", Shortcut.of(Key.M)).on(this::toggleMute);
 
         // The framework has no per-node pointer-move hook, so the bar's idle fade reads input off the bus; and no
         // per-node wheel hook, so the wheel over the picture is read there too. The touchpad's fingers are counted
@@ -1154,6 +1180,43 @@ public final class PictureViewer {
         stir();
     }
 
+    // ---------------------------------------------------------------- sound
+
+    /**
+     * How loud pictures that play are heard, from 0 to 1, and whether they are muted: the application's kept choice,
+     * given back, for the one playing and every one after. Does not call {@link Host#sounded}.
+     */
+    public void sound(float volume, boolean muted) {
+        image.volume(volume);
+        image.muted(muted);
+        showTransport();
+    }
+
+    public float volume() {
+        return image.volume();
+    }
+
+    public boolean muted() {
+        return image.muted();
+    }
+
+    /** The volume slider moved: that loud, and heard. Told to the application when the drag ends. */
+    private void slideVolume(float level) {
+        image.muted(false);
+        image.volume(level);
+        stir();
+    }
+
+    /** Mute or unmute, from the tile or M: only while a picture with sound plays. Tells the application. */
+    private void toggleMute() {
+        playback(p -> {
+            if (p.sounds()) {
+                image.muted(!image.muted());
+                host.sounded(image.volume(), image.muted());
+            }
+        });
+    }
+
     // ---------------------------------------------------------------- scaling
 
     /**
@@ -1328,6 +1391,15 @@ public final class PictureViewer {
         }
         play.icon(p.wanted() ? Icon.PAUSE : Icon.PLAY);
         loop.on(p.loop());
+        boolean sounds = p.sounds();
+        sound.visible(sounds);
+        if (sounds) {
+            boolean muted = p.muted();
+            float level = p.volume();
+            mute.on(muted);
+            mute.icon(muted || level == 0f ? Icon.VOLUME_MUTED : level < 0.5f ? Icon.VOLUME_LOW : Icon.VOLUME_HIGH);
+            volume.show(muted ? 0f : level);
+        }
         long d = p.duration();
         long at = Math.min(p.position(), d);
         seek.show(d > 0 ? (float) at / d : 0f);
