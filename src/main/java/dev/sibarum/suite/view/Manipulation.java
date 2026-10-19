@@ -16,14 +16,16 @@ import java.util.List;
  *   <li><b>The zoom joins</b> once the fingers' spread has changed by at least half as far as their centre has
  *       travelled, and at least {@link #START_MM}: tactroller's own test for a pinch, applied to the whole gesture
  *       rather than to its first few millimetres, so a long pan needs a deliberate spread before it zooms.</li>
- *   <li><b>The turn joins</b> once the fingers have twisted {@link #TURN_GATE}, 30°. Nothing less is a turn on
- *       purpose — unless the picture is already turned off a quarter, when there is nothing for a wobble to
- *       disturb and the turn is the fingers' from the start ({@code turnFree}).</li>
+ *   <li><b>The turn is free</b> once the fingers have twisted {@link #TURN_GATE}, 30°. Short of that the twist is
+ *       still reported, so the view can lean the picture against the lock and let it spring back ({@link Lens}),
+ *       but not as {@code free}: nothing less is a turn on purpose — unless the picture is already turned off a
+ *       quarter, when there is nothing for a wobble to disturb and the turn is free from the start
+ *       ({@code turnFree}).</li>
  * </ul>
  *
- * <p>Joining, each catches up: the first step after it joins carries all the zoom or turn the fingers had made
- * until then, so the picture is turned as far as the hand is, not lagging 30° behind it. The view smooths
- * that in ({@link Lens}).
+ * <p>The zoom, joining, catches up: the first step after it joins carries all the zoom the fingers had made until
+ * then, so the picture is as large as the hand has made it. The turn has been reported all along; once it is free
+ * the view puts the picture as far round as the hand is, not lagging 30° behind it. The view smooths both in.
  *
  * <p>When the fingers lift, a pure pan leaves with the speed they were going; one that zoomed or turned does not,
  * since the drift of fingers lifting from a pinch is not a throw.
@@ -49,9 +51,10 @@ final class Manipulation {
 
     /**
      * They moved: the centre by {@code (dx, dy)} millimetres, the spread by {@code scale} and the twist by
-     * {@code turn} radians clockwise, since the last step. {@code scale} is 1 and {@code turn} 0 until each joins.
+     * {@code turn} radians clockwise, since the last step. {@code scale} is 1 until the zoom joins; {@code turn} is
+     * the fingers' twist always, and {@code free} whether it has passed the lock and is a turn on purpose.
      */
-    record Moved(double dx, double dy, double scale, double turn) implements Out {
+    record Moved(double dx, double dy, double scale, double turn, boolean free) implements Out {
     }
 
     /**
@@ -154,14 +157,8 @@ final class Manipulation {
             zooming = true;
             scale = scaled;   // all of it so far, at once: the picture catches up with the fingers
         }
-        double turn = 0;
-        if (turning) {
-            turn = dt;
-        } else if (Math.abs(turned) >= TURN_GATE) {
-            turning = true;
-            turn = turned;
-        }
-        return new Moved(dx, dy, scale, turn);
+        turning |= Math.abs(turned) >= TURN_GATE;
+        return new Moved(dx, dy, scale, dt, turning);
     }
 
     private Ended end(long nanos) {

@@ -73,11 +73,12 @@ view/               the viewer and its parts, on vexelray-gui.
                     as its whole window.
   Lens              how the picture is looked at: zoomed about the pointer, moved, turned to any angle, and held
                     where it can be seen, springing back with its momentum; following two fingers, smoothed, about
-                    their point, settling onto the nearest quarter turn if they turned it, and fitted if let go near
-                    it. Pure, tested without a window.
+                    their point. A twist short of the lock leans the picture and springs back; past it, quarter
+                    turns and the fitted size are magnets that pull and hold it while the fingers are down, so what
+                    it shows is what letting go does. Pure, tested without a window.
   Manipulation      two fingers on the touchpad, from their raw contacts: always a pan, joined by a zoom once the
-                    spread changes by half the travel and by a turn past 30° (at once, on a picture already askew),
-                    each catching up as it joins.
+                    spread changes by half the travel, catching up as it joins; the twist always, free past 30° (at
+                    once, on a picture already askew).
   Sharpen           at rest, the part on screen made again from the file's full-size pixels at exactly the size it
                     is drawn, and laid over the picture. While it moves, the picture is drawn as it was.
   Filmstrip         the neighbours' thumbnails, gliding one square along on a step.

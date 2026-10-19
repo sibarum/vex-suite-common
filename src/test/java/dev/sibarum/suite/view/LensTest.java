@@ -246,7 +246,7 @@ class LensTest {
         Lens l = lens();
         l.touchStart();
         // A point on the picture 100px right of the centre, under the fingers: twice the size and a quarter turn.
-        l.touch(0f, 0f, 2f, 90f, 100f, 0f);
+        l.touch(0f, 0f, 2f, 90f, true, 100f, 0f);
         follow(l);
         Pose p = l.pose();
         assertEquals(2f, p.zoom(), 1e-3f);
@@ -260,7 +260,7 @@ class LensTest {
     @Test
     void thePictureFollowsTheFingersSmoothedNotAtOnce() {
         Lens l = lens();
-        l.touch(0f, 0f, 2f, 0f, 0f, 0f);
+        l.touch(0f, 0f, 2f, 0f, false, 0f, 0f);
         l.step(1f / 60f);
         float z = l.pose().zoom();
         assertTrue(z > 1.1f && z < 1.9f, "on its way, a frame later: " + z);
@@ -269,20 +269,90 @@ class LensTest {
     }
 
     @Test
-    void aTwistLetGoAnywhereSettlesOntoTheNearestQuarter() {
-        for (float[] turn : new float[][] {{85f, 90f}, {30f, 0f}, {60f, 90f}, {-140f, -180f}}) {
-            Lens l = lens();
-            l.touch(0f, 0f, 1.5f, turn[0], 0f, 0f);
-            l.touchEnd(0f, 0f, 0f, 0f);
-            settle(l);
-            assertEquals(turn[1], l.pose().degrees(), 1e-3f, "turned " + turn[0]);
-        }
+    void aTwistShortOfTheLockLeansThePictureAndSpringsBack() {
+        Lens l = lens();
+        l.touch(0f, 0f, 1f, 2f, false, 0f, 0f);
+        follow(l);
+        assertEquals(0f, l.pose().degrees(), 1e-4f, "two degrees is a wobble");
+        l.touch(0f, 0f, 1f, 23f, false, 0f, 0f);
+        follow(l);
+        float lean = l.pose().degrees();
+        assertTrue(lean > 2f && lean < Lens.LEAN, "leaning against the lock, well short of the fingers: " + lean);
+        l.touchEnd(0f, 0f, 0f, 0f);
+        settle(l);
+        assertEquals(0f, l.pose().degrees(), 1e-3f);
+    }
+
+    @Test
+    void pastTheLockThePictureSwingsToTheFingersAndStaysWhereItIsLeft() {
+        Lens l = lens();
+        l.touch(0f, 0f, 1.5f, 25f, false, 0f, 0f);
+        l.touch(0f, 0f, 1f, 10f, true, 0f, 0f);
+        follow(l);
+        assertEquals(35f, l.pose().degrees(), 0.05f, "as far round as the fingers, at once");
+        l.touchEnd(0f, 0f, 0f, 0f);
+        settle(l);
+        assertEquals(35f, l.pose().degrees(), 1e-3f, "free: no quarter near enough to pull it");
+    }
+
+    @Test
+    void aQuarterTurnPullsThePictureOnHoldsItAndLetsGoFurtherOut() {
+        Lens l = lens();
+        l.touch(0f, 0f, 1.5f, 80f, true, 0f, 0f);
+        follow(l);
+        assertEquals(80f, l.pose().degrees(), 0.05f, "ten degrees off is outside the magnet");
+        l.touch(0f, 0f, 1f, 5f, true, 0f, 0f);
+        follow(l);
+        assertEquals(89f, l.pose().degrees(), 0.05f, "five off: pulled on, giving a fifth");
+        l.touch(0f, 0f, 1f, 10f, true, 0f, 0f);
+        follow(l);
+        assertEquals(91f, l.pose().degrees(), 0.05f, "held through the quarter");
+        l.touch(0f, 0f, 1f, 7f, true, 0f, 0f);
+        follow(l);
+        assertEquals(102f, l.pose().degrees(), 0.05f, "twelve off: let go, where the fingers are");
+        l.touch(0f, 0f, 1f, -3f, true, 0f, 0f);
+        follow(l);
+        assertEquals(99f, l.pose().degrees(), 0.05f, "nine off, coming back: not caught again until seven");
+        l.touch(0f, 0f, 1f, -4f, true, 0f, 0f);
+        l.touchEnd(0f, 0f, 0f, 0f);
+        settle(l);
+        assertEquals(90f, l.pose().degrees(), 1e-3f, "let go of while held, it settles on the quarter");
+    }
+
+    @Test
+    void aPictureALittleAskewIsNotPulledStraightByAPan() {
+        Lens l = lens();
+        l.turn(1f);   // 5 degrees, from the wheel
+        settle(l);
+        l.touch(30f, 0f, 1f, 0f, true, 0f, 0f);
+        follow(l);
+        l.touchEnd(0f, 0f, 0f, 0f);
+        settle(l);
+        assertEquals(5f, l.pose().degrees(), 1e-3f);
+    }
+
+    @Test
+    void theFittedSizeHoldsAPinchNearItAndLetsGoFurtherOut() {
+        Lens l = lens();
+        l.touch(50f, 0f, 1.08f, 0f, false, 0f, 0f);
+        follow(l);
+        Pose held = l.pose();
+        assertTrue(held.zoom() > 1f && held.zoom() < 1.02f, "pulled to fitted, giving a little: " + held.zoom());
+        assertEquals(10f, held.x(), 0.1f, "and towards the centre");
+        l.touch(0f, 0f, 1.1f, 0f, false, 0f, 0f);
+        follow(l);
+        Pose free = l.pose();
+        assertEquals(1.188f, free.zoom(), 1e-3f, "nineteen per cent over: let go, the size the fingers made");
+        assertTrue(free.x() > 10f, "where the fingers put it: " + free.x());
+        l.touchEnd(0f, 0f, 0f, 0f);
+        settle(l);
+        assertEquals(1.188f, l.pose().zoom(), 1e-3f);
     }
 
     @Test
     void theSettlingTurnIsAboutTheFingersPointNotThePicturesCentre() {
         Lens l = lens();
-        l.touch(0f, 0f, 3f, 60f, 100f, 0f);   // the fingers 100px right of the centre: three times, and 60 degrees
+        l.touch(0f, 0f, 3f, 85f, true, 100f, 0f);   // the fingers 100px right of the centre: three times, and 85 degrees
         follow(l);
         l.touchEnd(0f, 0f, 100f, 0f);
         settle(l);
@@ -299,7 +369,7 @@ class LensTest {
         l.turn(5f);   // 25 degrees, from the wheel
         settle(l);
         assertTrue(l.askew());
-        l.touch(30f, 0f, 1f, 0f, 0f, 0f);
+        l.touch(30f, 0f, 1f, 0f, true, 0f, 0f);
         l.touchEnd(0f, 0f, 0f, 0f);
         settle(l);
         assertEquals(25f, l.pose().degrees(), 1e-3f);
@@ -308,7 +378,7 @@ class LensTest {
     @Test
     void lettingGoNearFittedFitsAndCentres() {
         Lens l = lens();
-        l.touch(40f, 20f, 1.04f, 3f, 0f, 0f);
+        l.touch(40f, 20f, 1.04f, 3f, false, 0f, 0f);
         l.touchEnd(0f, 0f, 0f, 0f);
         settle(l);
         Pose p = l.pose();
@@ -322,7 +392,7 @@ class LensTest {
     void aPurePanOfAFittedPictureIsNotRefittedOnLettingGo() {
         Lens l = new Lens();
         l.measure(new Fitted(1000f, 600f, 600f, 600f));   // 200px of room either side
-        l.touch(150f, 0f, 1f, 0f, 0f, 0f);
+        l.touch(150f, 0f, 1f, 0f, false, 0f, 0f);
         follow(l);
         l.touchEnd(0f, 0f, 0f, 0f);
         settle(l);
@@ -332,7 +402,7 @@ class LensTest {
     @Test
     void zoomingPastTheLimitGivesAndComesBack() {
         Lens l = lens();
-        l.touch(0f, 0f, Lens.MAX_ZOOM * 16f, 0f, 0f, 0f);   // four doublings past the limit
+        l.touch(0f, 0f, Lens.MAX_ZOOM * 16f, 0f, false, 0f, 0f);   // four doublings past the limit
         follow(l);
         assertEquals(Lens.MAX_ZOOM * 2f, l.pose().zoom(), 1e-2f, "a quarter of each doubling asked for: one of four");
         l.touchEnd(0f, 0f, 0f, 0f);
@@ -343,7 +413,7 @@ class LensTest {
     @Test
     void lettingGoFlingsAtTheFingersSpeed() {
         Lens l = lens();
-        l.touch(0f, 0f, 4f, 0f, 0f, 0f);
+        l.touch(0f, 0f, 4f, 0f, false, 0f, 0f);
         l.touchEnd(0f, 0f, 0f, 0f);
         settle(l);
         l.touchStart();

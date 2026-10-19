@@ -52,22 +52,24 @@ class ManipulationTest {
         lift(170);
         assertEquals(1, out.stream().filter(o -> o instanceof Manipulation.Began).count());
         assertEquals(1.0, scale(), 1e-9, "no zoom");
-        assertEquals(0.0, turn(), 1e-9, "no turn");
+        assertTrue(moves().stream().noneMatch(Manipulation.Moved::free), "no turn: the wobble never leaves the lock");
         assertEquals(40.0, moves().stream().mapToDouble(Manipulation.Moved::dx).sum(), 1e-6);
         Manipulation.Ended end = assertInstanceOf(Manipulation.Ended.class, out.getLast());
         assertTrue(end.vx() > 100, "a pan leaves with its speed: " + end.vx());
     }
 
     @Test
-    void aTwistShortOfThirtyDegreesIsNoTurnAndPastItCatchesUp() {
+    void aTwistShortOfThirtyDegreesIsToldButNotFreeAndPastItIs() {
         for (int d = 0; d <= 25; d += 5) {
             two(50, 35, 15, d, d);
         }
-        assertEquals(0.0, turn(), 1e-9, "twenty-five degrees is not a turn yet");
+        assertTrue(moves().stream().noneMatch(Manipulation.Moved::free), "twenty-five degrees is not a turn yet");
+        assertEquals(Math.toRadians(25), turn(), 1e-9, "though every degree of it is told, for the lean");
         two(50, 35, 15, 35, 35);
-        assertEquals(Math.toRadians(35), turn(), 1e-9, "past thirty, all of it, at once");
+        assertTrue(moves().getLast().free(), "past thirty, free");
         two(50, 35, 15, 45, 45);
-        assertEquals(Math.toRadians(45), turn(), 1e-9, "and from then on, as it goes");
+        assertTrue(moves().getLast().free(), "and from then on");
+        assertEquals(Math.toRadians(45), turn(), 1e-9);
     }
 
     @Test
@@ -85,7 +87,8 @@ class ManipulationTest {
         two(50, 35, 15, 0, 0);
         two(50, 35, 15, 10, 8);
         two(50, 35, 15, 15, 16);
-        assertEquals(Math.toRadians(15), turn(), 1e-9, "every degree, from the first");
+        assertTrue(moves().stream().allMatch(Manipulation.Moved::free), "free from the first");
+        assertEquals(Math.toRadians(15), turn(), 1e-9, "every degree");
     }
 
     @Test

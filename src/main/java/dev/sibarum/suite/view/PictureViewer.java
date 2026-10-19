@@ -1045,7 +1045,8 @@ public final class PictureViewer {
                     float turn = (float) Math.toDegrees(m.turn());
                     float px = touchX;
                     float py = touchY;
-                    look(l -> l.touch(dx, dy, scale, turn, px, py));
+                    boolean free = m.free();
+                    look(l -> l.touch(dx, dy, scale, turn, free, px, py));
                 }
             }
             case Manipulation.Ended e -> {

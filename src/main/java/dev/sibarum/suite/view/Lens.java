@@ -54,8 +54,29 @@ final class Lens {
     private static final float STILL = 6f;
     /** The longest physics step: a stalled frame is taken in pieces, so the spring never blows up. */
     private static final float SUBSTEP = 1f / 120f;
-    /** Within this fraction of the size it fits at, a pinch that lets go settles onto fitted. */
-    static final float SNAP_FIT = 0.06f;
+    /**
+     * The turn lock, while two fingers twist short of the gate ({@link Manipulation#TURN_GATE}): past the first
+     * {@link #LOCK_SLACK} degrees, which are a wobble, the picture leans with them, by at most {@link #LEAN}
+     * degrees and less the further they go ({@link #LEAN_GIVE} of the first degrees), and springs back when they lift.
+     */
+    static final float LOCK_SLACK = 3f;
+    static final float LEAN = 10f;
+    private static final float LEAN_GIVE = 0.4f;
+    /**
+     * The quarter turns are magnets once the turn is free: within {@link #MAGNET_IN} degrees of one the picture is
+     * pulled onto it and held, giving only {@link #HOLD} of what the fingers do, until they are {@link #MAGNET_OUT}
+     * away and it lets go. Let go of while held, it settles on the quarter; anywhere else, it stays where it is.
+     */
+    static final float MAGNET_IN = 7f;
+    static final float MAGNET_OUT = 10f;
+    /** How much of the fingers' turn or zoom a picture held by a magnet still gives. */
+    private static final float HOLD = 0.2f;
+    /**
+     * The fitted size is a magnet while two fingers zoom: within {@link #FIT_IN} of it the picture is pulled to it
+     * and towards the centre, until {@link #FIT_OUT} away. Let go of while held, it is fitted.
+     */
+    static final float FIT_IN = 0.10f;
+    static final float FIT_OUT = 0.14f;
     /** How stiffly a pinch past the zoom limits resists: the share of each further doubling asked for it gives. */
     private static final float ZOOM_BAND = 0.25f;
     /**
@@ -106,7 +127,16 @@ final class Lens {
     private boolean touching;
     private float touchZoom;
     private boolean touchZoomed;
-    private boolean touchTurned;
+    // The fingers' turn: the angle it rested at as they came, how far they have twisted since, whether past the lock,
+    // and whether at all (more than a wobble), so a pan of a picture a little askew is not pulled onto the quarter.
+    private float touchFrom;
+    private float touchTurn;
+    private boolean touchFree;
+    private boolean touchTwisted;
+    /** The quarter turn a magnet holds the picture on, or NaN. */
+    private float heldQuarter = Float.NaN;
+    /** Whether the fitted size's magnet holds the picture. */
+    private boolean heldFit;
     /** The turn still easing after the fingers lift is about the anchor, where they were, not the picture's centre. */
     private boolean turnAbout;
 
@@ -315,7 +345,11 @@ final class Lens {
     void touchStart() {
         turnAbout = false;
         touching = true;
-        touchZoomed = touchTurned = false;
+        touchZoomed = touchFree = touchTwisted = heldFit = false;
+        heldQuarter = Float.NaN;
+        touchTurn = 0f;
+        // Where the turn was going is where it rests, and where the lock springs back to: not wherever it was on its way.
+        touchFrom = degreesGoal;
         homing = false;
         dragging = false;
         vx = vy = 0f;
@@ -327,28 +361,38 @@ final class Lens {
     }
 
     /**
-     * The fingers moved {@code (dx, dy)} px, spread by {@code scale} and turned {@code turn} degrees clockwise, about
-     * {@code (px, py)}: where they want the picture moves with them — scaled and turned about that point, which
-     * stays under them — and the picture follows it, a few hundredths of a second behind, so the pad's jitter is
-     * smoothed away and a turn or zoom that joins late is caught up rather than jumped to. Past the zoom limits it
-     * gives against the fingers instead of stopping dead, and past the stage's, as a drag does.
+     * The fingers moved {@code (dx, dy)} px, spread by {@code scale} and twisted {@code turn} degrees clockwise, about
+     * {@code (px, py)}; {@code free} says the twist has passed the lock. Where they want the picture moves with them
+     * — scaled and turned about that point, which stays under them — and the picture follows it, a few hundredths of a
+     * second behind, so the pad's jitter is smoothed away and a turn or zoom that joins late is caught up rather than
+     * jumped to. Past the zoom limits it gives against the fingers instead of stopping dead, and past the stage's, as
+     * a drag does.
+     *
+     * <p>What it shows of the turn and the zoom says what letting go would do. Locked, it leans with the twist and no
+     * further than {@link #LEAN}, so the hand feels that it would turn. Free, it turns with the fingers but is pulled
+     * onto a quarter turn near one and held there ({@link #MAGNET_IN}); zoomed near the size it fits at, it is pulled
+     * to that size and towards the centre and held ({@link #FIT_IN}). Held, it moves a little with the fingers, and
+     * away from the magnet it lets go with a jump: on a magnet it settles there, off one it stays as it is.
      */
-    void touch(float dx, float dy, float scale, float turn, float px, float py) {
+    void touch(float dx, float dy, float scale, float turn, boolean free, float px, float py) {
         if (!measured()) {
             return;
         }
         if (!touching) {
             touchStart();
         }
-        if (scale != 1f || turn != 0f) {
+        touchZoomed |= scale != 1f;
+        touchFree |= free;
+        touchTurn += turn;
+        touchTwisted |= Math.abs(touchTurn) > LOCK_SLACK;
+        if (scale != 1f || (touchFree && touchTwisted)) {
             fitting = false;
-            touchZoomed |= scale != 1f;
-            touchTurned |= turn != 0f;
         }
+        float d = turnWanted();
         touchZoom *= scale;
-        float z = bandZoom(touchZoom);
+        float z = zoomWanted(bandZoom(touchZoom), d);
         float k = z / zoomGoal;
-        double r = Math.toRadians(turn);
+        double r = Math.toRadians(d - degreesGoal);
         float cos = (float) Math.cos(r);
         float sin = (float) Math.sin(r);
         float ox = (handX - px) * k;
@@ -356,16 +400,48 @@ final class Lens {
         handX = px + ox * cos - oy * sin + dx;
         handY = py + ox * sin + oy * cos + dy;
         zoomGoal = z;
-        degreesGoal += turn;
+        degreesGoal = d;
+    }
+
+    /** The angle the fingers' twist shows: leaning against the lock, or free and caught by the quarters' magnets. */
+    private float turnWanted() {
+        if (!touchFree) {
+            float over = Math.max(0f, Math.abs(touchTurn) - LOCK_SLACK);
+            return touchFrom + Math.signum(touchTurn) * LEAN * (1f - 1f / (over * LEAN_GIVE / LEAN + 1f));
+        }
+        float a = touchFrom + touchTurn;
+        if (!touchTwisted) {
+            return a;   // only carried, not turned: a picture left a little askew stays so
+        }
+        float q = Math.round(a / 90f) * 90f;
+        float off = a - q;
+        heldQuarter = Math.abs(off) < (q == heldQuarter ? MAGNET_OUT : MAGNET_IN) ? q : Float.NaN;
+        return Float.isNaN(heldQuarter) ? a : q + off * HOLD;
+    }
+
+    /** The zoom a pinch asking for {@code z} shows, turned {@code deg}: caught by the fitted size's magnet near it. */
+    private float zoomWanted(float z, float deg) {
+        if (!touchZoomed) {
+            return z;
+        }
+        float fit = fitZoom(baseW, baseH, stageW, stageH, deg);
+        double off = Math.log(z / fit);
+        heldFit = Math.abs(off) < Math.log1p(heldFit ? FIT_OUT : FIT_IN);
+        return heldFit ? fit * (float) Math.exp(off * HOLD) : z;
+    }
+
+    /** Where the fingers put the picture's centre along one axis: the hand, past the limit banded, held to the centre. */
+    private float touchPlace(float hand, float limit, float length) {
+        float at = band(hand, limit, length);
+        return heldFit ? at * HOLD : at;
     }
 
     /**
      * The fingers lift, leaving at {@code (fx, fy)} px a second, the pointer at {@code (px, py)}. The picture keeps
      * that speed, caught by the limit's spring as any fling is; comes back inside the zoom limits if pulled past
-     * them; settles onto the nearest quarter turn if the fingers turned it at all, wherever they left it; and is
-     * fitted if it was zoomed to within {@link #SNAP_FIT} of the size it fits at — each eased from where it was. A
-     * picture zoomed well off its fit stays the size it was put; one left askew by Ctrl and a drag, or Shift and the
-     * wheel, and not turned by the fingers, stays at its angle.
+     * them; springs back to the angle it had if the twist never passed the lock; settles onto the quarter turn a
+     * magnet held it on, or stays at the angle it was turned to; and is fitted if the fitted size's magnet held it —
+     * each eased from where it was. What it showed under the fingers is what it does.
      */
     void touchEnd(float fx, float fy, float px, float py) {
         if (!touching) {
@@ -377,12 +453,12 @@ final class Lens {
         cap();
         anchorX = px;
         anchorY = py;
-        if (touchTurned) {
-            degreesGoal = Math.round(degreesGoal / 90f) * 90f;
+        float settle = !touchFree ? touchFrom : Float.isNaN(heldQuarter) ? degreesGoal : heldQuarter;
+        if (settle != degreesGoal) {
+            degreesGoal = settle;
             turnAbout = true;   // the rest of the turn is about the fingers' point too, so it stays where it was
         }
-        float fit = fitZoom(baseW, baseH, stageW, stageH, degreesGoal);
-        if (touchZoomed && degreesGoal % 90f == 0f && Math.abs(zoomGoal / fit - 1f) <= SNAP_FIT) {
+        if (heldFit) {
             fit();
             return;
         }
@@ -463,7 +539,7 @@ final class Lens {
         if (touching) {
             // Following the fingers: moving until it is where they want it.
             return zoom != zoomGoal || degrees != degreesGoal
-                    || x != band(handX, limit(true), stageW) || y != band(handY, limit(false), stageH);
+                    || x != touchPlace(handX, limit(true), stageW) || y != touchPlace(handY, limit(false), stageH);
         }
         // In the hand, the picture moves only as the hand does: its velocity is kept for the release.
         return zoom != zoomGoal || degrees != degreesGoal
@@ -657,8 +733,8 @@ final class Lens {
         zoom = Math.abs(zoomGoal - z) < 1e-4f * zoomGoal ? zoomGoal : z;
         float d = degrees + (degreesGoal - degrees) * a;
         degrees = Math.abs(degreesGoal - d) < 0.02f ? degreesGoal : d;
-        float bx = band(handX, limit(true), stageW);
-        float by = band(handY, limit(false), stageH);
+        float bx = touchPlace(handX, limit(true), stageW);
+        float by = touchPlace(handY, limit(false), stageH);
         float nx = x + (bx - x) * a;
         float ny = y + (by - y) * a;
         x = Math.abs(bx - nx) < 0.05f ? bx : nx;
