@@ -70,7 +70,8 @@ import java.util.function.Function;
  *
  * <p><b>A narrow window keeps what fits</b> ({@link #fit}). With no room for a thumbnail between Previous and Next,
  * the two move out of the bar to the window's left and right edges; with no room for both side groups, Turn, Background,
- * Settings and Keep shown go, and then Close and the words. Nothing is ever drawn overlapping or cut off.
+ * Settings and Keep shown go, and then Close and the words. Nothing is ever drawn overlapping or cut off. While a
+ * picture plays, the transport takes the filmstrip's place, and Previous and Next are at the sides.
  *
  * <p><b>The picture has the whole window</b> under the title bar, and the controls float over it: when the pointer
  * rests they fade, after {@link #IDLE_MS}, and moving the mouse, clicking or pressing Tab brings them back. <b>Keep
@@ -100,9 +101,10 @@ import java.util.function.Function;
  * transport's {@link #PLAY}, {@link #FRAME_BACK}, {@link #FRAME_ON}, {@link #SEEK}, {@link #POSITION}, {@link #LOOP},
  * {@link #MUTE} and {@link #VOLUME}, and over the seek bar a video's {@link #GLANCE}.
  *
- * <p><b>A picture that plays is played like a movie</b> ({@code Playback}): a transport floats above the bar while it
- * is up, with play and pause, a frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with
- * the bar. Space plays and pauses, comma and period step a frame, with Shift a second, and L turns looping on and off.
+ * <p><b>A picture that plays is played like a movie</b> ({@code Playback}): while it is up, a transport takes the
+ * filmstrip's place in the middle of the bar, Previous and Next going to the window's sides, with play and pause, a
+ * frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with the bar. Nothing floats above
+ * the bar, so the picture keeps all the height the bar leaves it. Space plays and pauses, comma and period step a frame, with Shift a second, and L turns looping on and off.
  * It plays as soon as it is shown, round and round, and holds while the window is not focused. One with sound (a
  * video's) has Mute and a volume slider after Loop, and M mutes and unmutes; the level and the mute carry over to the
  * next picture, and the application keeps them ({@link Host#sounded}) and gives them back ({@link #sound}). While a
@@ -251,7 +253,7 @@ public final class PictureViewer {
     private static final Length MARGIN = Length.rem(1f);
     /** The room Previous or Next takes at the window's side when the controls are pinned: the tile and its margins. */
     private static final Length SIDE_ROOM = Length.rem(Tile.SIDE_REM + 2f);
-    /** How far up the backdrop menu sits while the bar floats, so it opens above the bar and not over it. */
+    /** How far up the menus sit while the bar floats, so they open above the bar and not over it. */
     private static final Length BAR_ROOM = Length.rem(Tile.SIDE_REM + 1.75f);
     private static final Length SWATCH = Length.rem(1.75f);
     private static final Length WORDS_CORNER = Length.rem(0.75f);
@@ -289,9 +291,12 @@ public final class PictureViewer {
     /** Where Previous and Next go when the bar has no room for them: the window's left and right edges. */
     private final Node leftSide;
     private final Node rightSide;
-    /** The transport over the picture, above the bar, while the picture plays; and what it is made of. */
+    /**
+     * The transport, in the bar's middle in the filmstrip's place while the picture plays; and what it is made of.
+     * The deck is its slab, which {@link #fit} makes room for.
+     */
     private final Node transport;
-    private final Node transportLift;
+    private final Node deck;
     private final Tile play;
     private final Tile loop;
     /** Mute and the volume, shown only for a picture with sound ({@link Playback#sounds}), on a slab of their own. */
@@ -307,7 +312,7 @@ public final class PictureViewer {
     /** The frame under the pointer, over the seek bar, for a video. */
     private final Glance glance;
     private final Node clock;
-    /** Everything that fades: the bar, and the two sides. */
+    /** Everything that fades: the bar, with the transport in it, and the two sides. */
     private final List<Node> chrome;
     private final Node stage;
     /** The menus over the picture, Turn's, Background's and Settings', of which one at most is open. */
@@ -369,10 +374,16 @@ public final class PictureViewer {
     private final AtomicInteger fade = new AtomicInteger();
     private Scheduled idle;
 
-    /** What {@link #fit} last decided, and the tile size it was measured from. Layout callbacks only. */
+    /**
+     * What {@link #fit} last decided, the tile size and the deck's width it was measured from, and whether the
+     * transport is up. Guarded by the fit lock: the playing's thread refits too, as the transport comes and goes.
+     */
+    private final Object fitLock = new Object();
     private boolean arrowsInBar = true;
     private boolean arrowsAtSides;
     private float tilePx;
+    private float deckPx;
+    private boolean playing;
 
     /**
      * Build the viewer into {@code gui}'s root, under {@code bar}, which it places and titles.
@@ -442,14 +453,10 @@ public final class PictureViewer {
         Node left = gui.row().width(Length.grow(1f)).height(Length.AUTO).scroll(false, false).children(title);
         Node right = gui.row().width(Length.grow(1f)).height(Length.AUTO).justify(Justify.END).scroll(false, false)
                 .children(tools);
-        this.controls = gui.row().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
-                .padding(Length.rem(0.75f), MARGIN).gap(MARGIN).scroll(false, false)
-                .children(left, browse, right);
-        gui.onResize(controls, this::refit);
         this.leftSide = side(Length.ZERO);
         this.rightSide = side(Length.percent(100f));
 
-        // The transport: shown only while the picture in front plays, above the bar, fading with it.
+        // The transport: shown only while the picture in front plays, in the bar's middle, fading with it.
         this.play = Tile.of(gui, Icon.PLAY, "Play").onPress(() -> playback(Playback::toggle));
         Tile back = Tile.of(gui, Icon.STEP_BACK, "Previous frame").onPress(() -> playback(p -> p.step(-1)));
         Tile on = Tile.of(gui, Icon.STEP, "Next frame").onPress(() -> playback(p -> p.step(1)));
@@ -475,15 +482,26 @@ public final class PictureViewer {
         gui.landmark(landmarks + VOLUME, volume.node());
         this.sound = gui.row().width(Length.AUTO).height(Length.AUTO).alignItems(AlignItems.CENTER).gap(Tile.GAP)
                 .scroll(false, false).visible(false).children(mute.node(), volume.node());
-        Node deck = slab(gui.row()).alignItems(AlignItems.CENTER)
+        this.deck = slab(gui.row()).alignItems(AlignItems.CENTER)
                 .children(back.node(), play.node(), on.node(), seek.node(), clock, loop.node(), sound);
-        this.transportLift = gui.box().size(Length.dp(1), BAR_ROOM);
         this.videoKeys = gui.box().size(Length.ZERO, Length.ZERO).hitInert(true).disabled(true);
-        this.transport = gui.column().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
-                .padding(MARGIN).scroll(false, false).floatAt(Length.ZERO, Length.percent(100f)).visible(false)
-                .children(deck, transportLift, videoKeys);
+        this.transport = gui.row().width(Length.AUTO).height(Length.AUTO).alignItems(AlignItems.CENTER)
+                .scroll(false, false).visible(false).children(deck, videoKeys);
 
-        this.chrome = List.of(controls, leftSide, rightSide, transport);
+        this.controls = gui.row().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
+                .padding(Length.rem(0.75f), MARGIN).gap(MARGIN).scroll(false, false)
+                .children(left, browse, transport, right);
+        gui.onResize(controls, this::refit);
+        // The deck is measured once it is laid out, and again as it changes (the sound shown, a longer clock), and
+        // the bar fitted to what it takes.
+        gui.onResize(deck, d -> {
+            synchronized (fitLock) {
+                deckPx = d.rect().w();
+            }
+            refit(controls.layout());
+        });
+
+        this.chrome = List.of(controls, leftSide, rightSide);
         for (int i = 0; i < chrome.size(); i++) {
             int bit = 1 << i;
             gui.onState(chrome.get(i), s -> over.getAndUpdate(o -> s == InteractionState.NORMAL ? o & ~bit : o | bit));
@@ -547,7 +565,7 @@ public final class PictureViewer {
         image.onFit(() -> look(l -> l.measure(image.fitted())));
         image.onPlayback(this::showTransport);
         this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
-                .children(image.node(), leftSide, rightSide, transport, turnMenu.node(), backdropMenu.node(),
+                .children(image.node(), leftSide, rightSide, turnMenu.node(), backdropMenu.node(),
                         settingsMenu.node());
         // Over the seek bar, a video's frame at the pointer: it follows the pointer along the bar, dragged or not.
         this.glance = new Glance(gui, textures, stage, deck, seek.node());
@@ -825,11 +843,24 @@ public final class PictureViewer {
      * the rest.
      */
     static Fit fit(float width, float tile) {
+        return fit(width, tile, 0f);
+    }
+
+    /**
+     * The same, with the transport {@code deck} px across in the bar's middle in the filmstrip's place, or none at 0.
+     * With it, Previous and Next are at the sides, and the two side groups stay while each has half of what the
+     * transport leaves; otherwise both go, so the transport stays centred.
+     */
+    static Fit fit(float width, float tile, float deck) {
         float gap = tile / 9f;
         float barGap = 2f * gap;
         // Each slab: its tiles, its padding and a gap between each two, and its 1 px edges.
         float title = tile + tile * TITLE_REM / Tile.SIDE_REM + 3f * gap + 2f;
         float tools = 4f * tile + 5f * gap + 2f;   // Turn, Background, Settings and Keep shown
+        if (deck > 0f) {
+            boolean both = Math.max(title, tools) <= (width - deck - 2f * barGap) / 2f;
+            return new Fit(0, false, width >= 3f * tile, both, both);
+        }
         int n = thumbnails(width, Math.max(title, tools), tile, gap, barGap);
         if (n > 0) {
             return new Fit(n, true, false, true, true);
@@ -841,8 +872,14 @@ public final class PictureViewer {
         return new Fit(0, false, sides, title <= width, false);
     }
 
-    /** Apply {@link #fit} to the bar's new box. */
+    /** Apply {@link #fit} to the bar's box: on a new one, and as the transport comes, goes and changes. */
     private void refit(NodeLayout box) {
+        synchronized (fitLock) {
+            fitted(box);
+        }
+    }
+
+    private void fitted(NodeLayout box) {
         for (Tile t : List.of(prev, next, keep, background)) {
             float w = t.node().layout().rect().w();
             if (w > 0f) {
@@ -853,7 +890,8 @@ public final class PictureViewer {
         if (!box.present() || tilePx <= 0f) {
             return;
         }
-        Fit f = fit(box.content().w(), tilePx);
+        // Until the deck is first laid out it is taken to fit; its measure follows at once, and fits the bar again.
+        Fit f = fit(box.content().w(), tilePx, playing ? Math.max(deckPx, 1f) : 0f);
         strip.fit(f.thumbnails());
         if (f.arrowsInBar() != arrowsInBar) {
             arrowsInBar = f.arrowsInBar();
@@ -890,14 +928,10 @@ public final class PictureViewer {
         boolean pinned = keepShown;
         if (pinned) {
             controls.unfloat();
-            // Pinned, the transport takes room of its own under the picture, as the bar does under the stage.
-            transport.unfloat();
         } else {
             controls.floatAt(Length.ZERO, Length.percent(100f));
-            transport.floatAt(Length.ZERO, Length.percent(100f));
         }
         stage.padding(Length.ZERO, pinned && arrowsAtSides ? SIDE_ROOM : Length.ZERO);
-        transportLift.visible(!pinned);
         turnMenu.lift().visible(!pinned);
         backdropMenu.lift().visible(!pinned);
         settingsMenu.lift().visible(!pinned);
@@ -1435,7 +1469,17 @@ public final class PictureViewer {
      */
     private void showTransport() {
         Playback p = image.playback();
-        transport.visible(p != null && active);
+        boolean up = p != null && active;
+        transport.visible(up);
+        boolean changed;
+        synchronized (fitLock) {
+            changed = up != playing;
+            playing = up;
+        }
+        if (changed) {
+            // The transport in the bar's middle and the arrows at the sides, or the filmstrip back between them.
+            refit(controls.layout());
+        }
         glance.playing(active ? p : null);
         videoKeys.disabled(p == null || !active || p.motion().source() == Motion.ANIMATION);
         if (p == null) {

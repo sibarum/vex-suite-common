@@ -83,4 +83,13 @@ class PictureViewerTest {
         PictureViewer.Fit tiny = PictureViewer.fit(200f, 72f);
         assertEquals(new PictureViewer.Fit(0, false, false, false, false), tiny, "and then everything");
     }
+
+    @Test
+    void aPlayingPictureHasTheTransportWhereTheFilmstripWas() {
+        // 72 px tiles, a 600 px transport: each side group needs 258 px of what the transport leaves, halved.
+        assertEquals(new PictureViewer.Fit(0, false, true, true, true), PictureViewer.fit(1400f, 72f, 600f),
+                "no filmstrip, and the arrows at the sides, however wide the bar");
+        assertEquals(new PictureViewer.Fit(0, false, true, false, false), PictureViewer.fit(1000f, 72f, 600f),
+                "both side groups go together, so the transport stays centred");
+    }
 }

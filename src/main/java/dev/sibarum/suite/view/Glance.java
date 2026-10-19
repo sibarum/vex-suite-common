@@ -225,7 +225,8 @@ final class Glance {
                     : (plateH() + LINE_REM + 2f * PAD_REM) * em;
         }
         float left = Math.clamp(x - w / 2f, st.x(), Math.max(st.x(), st.x() + st.w() - w));
-        float top = Math.max(st.y(), k.rect().y() - GAP_REM * em - h);
+        // Inside the stage, even when the transport is under it, in a pinned bar.
+        float top = Math.clamp(k.rect().y() - GAP_REM * em - h, st.y(), Math.max(st.y(), st.y() + st.h() - h));
         slab.floatAt(Length.percent((left - st.x()) / st.w() * 100f), Length.percent((top - st.y()) / st.h() * 100f));
         slab.visible(true);
         g.want(ms, this::landed);
