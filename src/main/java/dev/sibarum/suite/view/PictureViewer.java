@@ -2,6 +2,7 @@ package dev.sibarum.suite.view;
 
 import dev.vexelray.canvas.Color;
 import dev.vexelray.canvas.ImageFilter;
+import dev.vexelray.codec.image.Motion;
 import dev.vexelray.codec.image.Picture;
 import dev.vexelray.codec.image.gui.ImageView;
 import dev.vexelray.codec.image.gui.ImageView.Backdrop;
@@ -104,7 +105,9 @@ import java.util.function.Function;
  * the bar. Space plays and pauses, comma and period step a frame, with Shift a second, and L turns looping on and off.
  * It plays as soon as it is shown, round and round, and holds while the window is not focused. One with sound (a
  * video's) has Mute and a volume slider after Loop, and M mutes and unmutes; the level and the mute carry over to the
- * next picture, and the application keeps them ({@link Host#sounded}) and gives them back ({@link #sound}).
+ * next picture, and the application keeps them ({@link Host#sounded}) and gives them back ({@link #sound}). While a
+ * video is in front the arrows are its: left and right seek five seconds, up and down turn it up and down; once the
+ * picture in front is not a video, left and right step through the pictures again.
  *
  * <p><b>Settings</b> (the gear) opens a menu of how the picture is scaled: while it moves, by the GPU every frame from
  * its texture, and at rest, made again from the file's own pixels (see {@code Sharpen}). The same filters in each, from
@@ -216,6 +219,9 @@ public final class PictureViewer {
     public static final String VOLUME = "volume";
     /** How far Shift with comma or period moves the clock, in ms. */
     static final long JUMP_MS = 1000;
+    /** How far the left and right arrows seek a video, in ms, and how much up and down turn it up or down. */
+    static final long SEEK_MS = 5000;
+    static final float VOLUME_STEP = 0.05f;
 
     /** How long the pointer rests before the controls fade, and how long the fade takes. */
     public static final int IDLE_MS = 1200;
@@ -289,6 +295,11 @@ public final class PictureViewer {
     private final Tile mute;
     private final Slider volume;
     private final Node sound;
+    /**
+     * Where a video's keys apply: a node of no size in the transport, enabled only while a video is in front. The
+     * arrows are claimed here, so they seek and set the volume then, and go back to stepping pictures otherwise.
+     */
+    private final Node videoKeys;
     private final Slider seek;
     private final Node clock;
     /** Everything that fades: the bar, and the two sides. */
@@ -462,9 +473,10 @@ public final class PictureViewer {
         Node deck = slab(gui.row()).alignItems(AlignItems.CENTER)
                 .children(back.node(), play.node(), on.node(), seek.node(), clock, loop.node(), sound);
         this.transportLift = gui.box().size(Length.dp(1), BAR_ROOM);
+        this.videoKeys = gui.box().size(Length.ZERO, Length.ZERO).hitInert(true).disabled(true);
         this.transport = gui.column().width(Length.percent(100f)).height(Length.AUTO).alignItems(AlignItems.CENTER)
                 .padding(MARGIN).scroll(false, false).floatAt(Length.ZERO, Length.percent(100f)).visible(false)
-                .children(deck, transportLift);
+                .children(deck, transportLift, videoKeys);
 
         this.chrome = List.of(controls, leftSide, rightSide, transport);
         for (int i = 0; i < chrome.size(); i++) {
@@ -542,7 +554,17 @@ public final class PictureViewer {
 
         // The commands, by name, on the keys and gestures they start with; the user's key map has the last word. Three
         // fingers swiping left take the picture away to the left, so the next one comes in from the right, as it is
-        // thrown in: the page turns the way the hand turned it.
+        // thrown in: the page turns the way the hand turned it. A video's arrows come first, because a place narrower
+        // than the application's must be declared before an application-wide action takes the same key: they seek and
+        // set the volume, and outrank the pictures' arrows while a video is in front.
+        keys.action("play.seek-back", "Seek a video back", Shortcut.of(Key.LEFT))
+                .within(gui, videoKeys, ClaimScope.VISIBLE).on(() -> playback(p -> p.seek(p.position() - SEEK_MS)));
+        keys.action("play.seek-on", "Seek a video on", Shortcut.of(Key.RIGHT))
+                .within(gui, videoKeys, ClaimScope.VISIBLE).on(() -> playback(p -> p.seek(p.position() + SEEK_MS)));
+        keys.action("play.louder", "Turn a video up", Shortcut.of(Key.UP))
+                .within(gui, videoKeys, ClaimScope.VISIBLE).on(() -> stepVolume(VOLUME_STEP));
+        keys.action("play.quieter", "Turn a video down", Shortcut.of(Key.DOWN))
+                .within(gui, videoKeys, ClaimScope.VISIBLE).on(() -> stepVolume(-VOLUME_STEP));
         keys.action("view.previous", "Previous picture", Shortcut.of(Key.LEFT), Shortcut.of(Key.PAGE_UP),
                 Gesture.swipe(3, Gesture.Motion.SWIPE_RIGHT)).on(() -> host.step(-1));
         keys.action("view.next", "Next picture", Shortcut.of(Key.RIGHT), Shortcut.of(Key.PAGE_DOWN),
@@ -1208,6 +1230,23 @@ public final class PictureViewer {
         stir();
     }
 
+    /**
+     * Up or down by {@code delta}, from the arrows: only while a picture with sound plays. Turning it up is wanting to
+     * hear, so it unmutes, as the slider does; turning a muted one down only lowers the level it comes back at.
+     */
+    private void stepVolume(float delta) {
+        playback(p -> {
+            if (p.sounds()) {
+                if (delta > 0) {
+                    image.muted(false);
+                }
+                image.volume(image.volume() + delta);
+                host.sounded(image.volume(), image.muted());
+                showTransport();
+            }
+        });
+    }
+
     /** Mute or unmute, from the tile or M: only while a picture with sound plays. Tells the application. */
     private void toggleMute() {
         playback(p -> {
@@ -1387,6 +1426,7 @@ public final class PictureViewer {
     private void showTransport() {
         Playback p = image.playback();
         transport.visible(p != null && active);
+        videoKeys.disabled(p == null || !active || p.motion().source() == Motion.ANIMATION);
         if (p == null) {
             return;
         }
