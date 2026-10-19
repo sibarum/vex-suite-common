@@ -1499,12 +1499,27 @@ public final class PictureViewer {
         long d = p.duration();
         long at = Math.min(p.position(), d);
         seek.show(d > 0 ? (float) at / d : 0f);
-        clock.text(clockText(at, d) + "  " + (Math.max(0, p.frame()) + 1) + "/" + p.count());
+        clock.text(readout(at, d, p.frame(), p.count(), p.failure()));
     }
 
     /** "0:01.2 / 0:04.0": where the clock is, and how long a pass is. */
     static String clockText(long at, long duration) {
         return time(at) + " / " + time(duration);
+    }
+
+    /** The most of a reason the clock's place shows: one line, so the deck stays a size the bar can fit. */
+    static final int WHY_CHARS = 48;
+
+    /**
+     * What the clock's place says: the clock and the frame, "0:01.2 / 0:04.0  13/40"; or, once the file will not play
+     * or has stopped decoding ({@code why}), why, so a poster that never moves is never a mystery.
+     */
+    static String readout(long at, long duration, int frame, int count, String why) {
+        if (why != null && !why.isBlank()) {
+            String line = why.strip().replaceAll("\\s+", " ");
+            return line.length() <= WHY_CHARS ? line : line.substring(0, WHY_CHARS - 1) + "…";
+        }
+        return clockText(at, duration) + "  " + (Math.max(0, frame) + 1) + "/" + count;
     }
 
     static String time(long ms) {

@@ -26,6 +26,18 @@ class PictureViewerTest {
     }
 
     @Test
+    void aFileThatWillNotPlaySaysWhyWhereTheClockWas() {
+        assertEquals("0:01.2 / 0:04.0  13/40", PictureViewer.readout(1_250, 4_000, 12, 40, null));
+        assertEquals("0:00.0 / 0:04.0  1/40", PictureViewer.readout(0, 4_000, -1, 40, null), "before the first frame");
+        assertEquals("0:00.0 / 0:04.0  1/40", PictureViewer.readout(0, 4_000, -1, 40, " "), "a blank reason is none");
+        assertEquals("Invalid data found when processing input",
+                PictureViewer.readout(0, 4_000, 0, 40, "Invalid data found\nwhen processing input"), "on one line");
+        String cut = PictureViewer.readout(0, 0, 0, 0, "x".repeat(200));
+        assertEquals(PictureViewer.WHY_CHARS, cut.length(), "a long reason is cut, so the deck stays a size");
+        assertTrue(cut.endsWith("…"));
+    }
+
+    @Test
     void stepsStopAtTheEnds() {
         assertEquals(B, PictureViewer.target(PICTURES, A, 1));
         assertEquals(A, PictureViewer.target(PICTURES, A, -1), "no wrap: the first stays the first");

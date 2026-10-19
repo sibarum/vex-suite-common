@@ -49,10 +49,16 @@ final class Sharpen {
     /**
      * Make {@code of}, the picture of {@code path} that is up, again where {@code visible} says the stage shows it
      * ({@link Lens#visible}), from the file's own pixels scaled with {@code filter}. Nothing for a picture that moves,
-     * whose frames are shown as they come: a part made sharper from one frame would lie over every other.
+     * whose frames are shown as they come: a part made sharper from one frame would lie over every other. For that,
+     * or a picture of no file, the last still's pixels are let go of now: a photograph's are large, and nothing else
+     * would let them go until the next still.
      */
     void request(Path path, Picture of, float[] visible, ImageFilter filter) {
-        if (path == null || of == null || of.moves() || visible == null || filter == null) {
+        if (path == null || of == null || of.moves()) {
+            forget();
+            return;
+        }
+        if (visible == null || filter == null) {
             return;
         }
         float w = visible[4];
@@ -93,17 +99,24 @@ final class Sharpen {
                 original = null;
                 continue;
             }
-            if (!job.path().equals(kept)) {
-                original = null;   // let the last file go before reading the next
-                kept = job.path();
-                original = Original.of(job.path());
-            }
-            if (original == null) {
-                continue;
-            }
-            Picture part = original.detail(job.filter(), job.u0(), job.v0(), job.u1(), job.v1(), job.w(), job.h());
-            if (part != null && pending.get() == null) {
-                image.detail(job.of(), part, job.zoom(), job.u0(), job.v0(), job.u1(), job.v1());
+            try {
+                if (!job.path().equals(kept)) {
+                    original = null;   // let the last file go before reading the next
+                    kept = job.path();
+                    original = Original.of(job.path());
+                }
+                if (original == null) {
+                    continue;
+                }
+                Picture part = original.detail(job.filter(), job.u0(), job.v0(), job.u1(), job.v1(), job.w(), job.h());
+                if (part != null && pending.get() == null) {
+                    image.detail(job.of(), part, job.zoom(), job.u0(), job.v0(), job.u1(), job.v1());
+                }
+            } catch (RuntimeException | OutOfMemoryError e) {
+                // One part that could not be made: let the file go and stay ready for the next ask, rather than end
+                // with running still up and never sharpen again.
+                kept = null;
+                original = null;
             }
         }
     }

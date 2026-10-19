@@ -229,12 +229,18 @@ final class Glance {
         float top = Math.clamp(k.rect().y() - GAP_REM * em - h, st.y(), Math.max(st.y(), st.y() + st.h() - h));
         slab.floatAt(Length.percent((left - st.x()) / st.w() * 100f), Length.percent((top - st.y()) / st.h() * 100f));
         slab.visible(true);
-        g.want(ms, this::landed);
+        g.want(ms, p -> landed(g, p));
     }
 
-    /** A frame has been made for the latest ask: put it on the plate, unless it is there already. */
-    private void landed(Picture p) {
+    /**
+     * A frame has been made by {@code from} for the latest ask: put it on the plate, unless it is there already, or
+     * {@code from} was closed for another video while it was being made, whose slab it does not belong on.
+     */
+    private void landed(Glimpses from, Picture p) {
         synchronized (this) {
+            if (from != glimpses) {
+                return;
+            }
             asked = p;
             if (p == shown || !hovered) {
                 return;
