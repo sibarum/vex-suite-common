@@ -27,6 +27,16 @@ import java.util.List;
  *
  * <p>Rasterised by imagelib's own SVG renderer, at each size from the vector rather than shrunk from the largest, so
  * the 16 px icon is drawn at 16 px.
+ *
+ * <p><b>A drawing per small size, where there is one.</b> Some icons are redrawn for the smallest sizes rather than
+ * only rendered smaller: the background icons' rim has eight heavier dashes at 24 and 16 px where it has twelve above.
+ * Name those after the output as {@code <side>=<svg>}, and every size up to that side is drawn from it, the
+ * smallest such drawing that covers the size; the sizes above them all come from {@code <in.svg>}:
+ *
+ * <pre>
+ * java ... tools/Ico.java mainframe-background.svg mainframe-background.ico \
+ *      16=mainframe-background-16.svg 24=mainframe-background-24.svg
+ * </pre>
  */
 public final class Ico {
 
@@ -34,14 +44,24 @@ public final class Ico {
     static final int[] SIZES = {16, 20, 24, 32, 40, 48, 64, 96, 128, 256};
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 2) {
-            System.err.println("usage: Ico <in.svg> <out.ico>");
+        if (args.length < 2) {
+            System.err.println("usage: Ico <in.svg> <out.ico> [<side>=<small.svg> ...]");
             System.exit(2);
         }
         byte[] svg = Files.readAllBytes(Path.of(args[0]));
+        java.util.TreeMap<Integer, byte[]> small = new java.util.TreeMap<>();
+        for (int i = 2; i < args.length; i++) {
+            int eq = args[i].indexOf('=');
+            if (eq <= 0) {
+                System.err.println("not <side>=<small.svg>: " + args[i]);
+                System.exit(2);
+            }
+            small.put(Integer.parseInt(args[i].substring(0, eq)), Files.readAllBytes(Path.of(args[i].substring(eq + 1))));
+        }
         List<byte[]> pngs = new ArrayList<>();
         for (int side : SIZES) {
-            pngs.add(png(Imagelib.rasterize(svg, side, side)));
+            java.util.Map.Entry<Integer, byte[]> drawn = small.ceilingEntry(side);
+            pngs.add(png(Imagelib.rasterize(drawn != null ? drawn.getValue() : svg, side, side)));
         }
         Files.write(Path.of(args[1]), ico(pngs));
         System.out.println(args[1] + ": " + SIZES.length + " sizes, " + Files.size(Path.of(args[1])) + " bytes");

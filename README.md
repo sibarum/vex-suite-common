@@ -127,3 +127,12 @@ java --enable-native-access=ALL-UNNAMED \
      -cp ~/.m2/repository/sibarum/imagelib/imagelib-wrapper/0.1.0-SNAPSHOT/imagelib-wrapper-0.1.0-SNAPSHOT.jar \
      tools/Ico.java ../Pix/src/main/rc/pix.svg ../Pix/src/main/rc/pix.ico
 ```
+
+An icon redrawn for the small sizes names those drawings after the output, as `<side>=<svg>`; each size up to that
+side comes from the smallest one covering it. The background icons are made so, their rim having eight heavier dashes
+at 24 and 16 px:
+
+```
+java ... tools/Ico.java ../Pix/src/main/rc/pix-background.svg ../Pix/src/main/rc/pix-background.ico \
+     16=../Pix/src/main/rc/pix-background-16.svg 24=../Pix/src/main/rc/pix-background-24.svg
+```
