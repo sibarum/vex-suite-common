@@ -98,7 +98,7 @@ import java.util.function.Function;
  * {@link #TURN_RIGHT}, {@link #MIRROR_ACROSS}, {@link #MIRROR_DOWN} and {@link #UPRIGHT}, the backdrop swatches {@link #BACKDROP}{@code checker} and so
  * on, the scaling choices {@link #MOVING}{@code lanczos} and {@link #RESTING}{@code lanczos} and so on, and the
  * transport's {@link #PLAY}, {@link #FRAME_BACK}, {@link #FRAME_ON}, {@link #SEEK}, {@link #POSITION}, {@link #LOOP},
- * {@link #MUTE} and {@link #VOLUME}.
+ * {@link #MUTE} and {@link #VOLUME}, and over the seek bar a video's {@link #GLANCE}.
  *
  * <p><b>A picture that plays is played like a movie</b> ({@code Playback}): a transport floats above the bar while it
  * is up, with play and pause, a frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with
@@ -107,7 +107,8 @@ import java.util.function.Function;
  * video's) has Mute and a volume slider after Loop, and M mutes and unmutes; the level and the mute carry over to the
  * next picture, and the application keeps them ({@link Host#sounded}) and gives them back ({@link #sound}). While a
  * video is in front the arrows are its: left and right seek five seconds, up and down turn it up and down; once the
- * picture in front is not a video, left and right step through the pictures again.
+ * picture in front is not a video, left and right step through the pictures again. With the pointer on a video's seek
+ * bar, the frame there and its time show above it ({@code Glance}), following the pointer, and the drag.
  *
  * <p><b>Settings</b> (the gear) opens a menu of how the picture is scaled: while it moves, by the GPU every frame from
  * its texture, and at rest, made again from the file's own pixels (see {@code Sharpen}). The same filters in each, from
@@ -217,6 +218,8 @@ public final class PictureViewer {
     public static final String LOOP = "loop";
     public static final String MUTE = "mute";
     public static final String VOLUME = "volume";
+    /** Over the seek bar while the pointer is on it, for a video: the frame there, and its time. */
+    public static final String GLANCE = "glance";
     /** How far Shift with comma or period moves the clock, in ms. */
     static final long JUMP_MS = 1000;
     /** How far the left and right arrows seek a video, in ms, and how much up and down turn it up or down. */
@@ -301,6 +304,8 @@ public final class PictureViewer {
      */
     private final Node videoKeys;
     private final Slider seek;
+    /** The frame under the pointer, over the seek bar, for a video. */
+    private final Glance glance;
     private final Node clock;
     /** Everything that fades: the bar, and the two sides. */
     private final List<Node> chrome;
@@ -544,6 +549,10 @@ public final class PictureViewer {
         this.stage = gui.column().width(Length.FILL).height(Length.grow(1f)).scroll(false, false)
                 .children(image.node(), leftSide, rightSide, transport, turnMenu.node(), backdropMenu.node(),
                         settingsMenu.node());
+        // Over the seek bar, a video's frame at the pointer: it follows the pointer along the bar, dragged or not.
+        this.glance = new Glance(gui, textures, stage, deck, seek.node());
+        gui.landmark(landmarks + GLANCE, glance.node());
+        gui.onState(seek.node(), s -> glance.hover(s != InteractionState.NORMAL));
         gui.root().direction(Direction.COLUMN).children(bar.node(), stage, controls);
         dock();
         gui.onResize(gui.root(), box -> {
@@ -613,6 +622,7 @@ public final class PictureViewer {
             if (e instanceof InputEvent.PointerMoved m) {
                 pointerX = m.x();
                 pointerY = m.y();
+                glance.pointer(m.x());
             }
             if (e instanceof InputEvent.TouchpadChanged t) {
                 if (t.contacts().isEmpty() && fingers > 0) {
@@ -1426,6 +1436,7 @@ public final class PictureViewer {
     private void showTransport() {
         Playback p = image.playback();
         transport.visible(p != null && active);
+        glance.playing(active ? p : null);
         videoKeys.disabled(p == null || !active || p.motion().source() == Motion.ANIMATION);
         if (p == null) {
             return;
@@ -1452,7 +1463,7 @@ public final class PictureViewer {
         return time(at) + " / " + time(duration);
     }
 
-    private static String time(long ms) {
+    static String time(long ms) {
         long tenths = Math.max(0, ms) / 100;
         return String.format(Locale.ROOT, "%d:%02d.%d", tenths / 600, tenths / 10 % 60, tenths % 10);
     }
