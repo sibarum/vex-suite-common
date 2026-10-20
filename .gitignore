@@ -32,3 +32,4 @@ target/
 
 # Design references are committed; only captures are ignored.
 !docs/**/*.png
+.claude/
