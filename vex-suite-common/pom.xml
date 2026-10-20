@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.sibarum</groupId>
+        <artifactId>vex-suite-common-parent</artifactId>
+        <version>0.1.2-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vex-suite-common</artifactId>
+
+    <name>vex-suite-common</name>
+    <description>
+        What Vexplore and Pix share: the picture sizes they decode at, the viewer's tree and its parts, and the palette
+        they are drawn in. Pictures themselves (decoding, packing, textures, the image view) are vexelray-codec's.
+        The terminal (Terminal, TerminalScreen, Pump) runs programs on a Pty from vex-suite-common-pty, whose OS half
+        the profiles below add.
+    </description>
+
+    <dependencies>
+        <!-- The widget shelf (TitleBar), and the GUI core and draw modules behind it. -->
+        <dependency>
+            <groupId>dev.vexelray.gui</groupId>
+            <artifactId>vexelray-gui-widget</artifactId>
+            <version>${vexelray-gui.version}</version>
+        </dependency>
+        <!-- The icon atlas: every control's icon, as a distance field. Reached through -widget as well. -->
+        <dependency>
+            <groupId>dev.vexelray.gui</groupId>
+            <artifactId>vexelray-gui-icons</artifactId>
+            <version>${vexelray-gui.version}</version>
+        </dependency>
+        <!-- The clock: the viewer's slides, the filmstrip's glide and the bar's fade. -->
+        <dependency>
+            <groupId>dev.vexelray.gui</groupId>
+            <artifactId>vexelray-gui-krono</artifactId>
+            <version>${vexelray-gui.version}</version>
+        </dependency>
+        <!-- The key map: the viewer's commands by name, on the chords and touchpad gestures the user gives them. -->
+        <dependency>
+            <groupId>dev.vexelray.gui</groupId>
+            <artifactId>vexelray-gui-keymap</artifactId>
+            <version>${vexelray-gui.version}</version>
+        </dependency>
+        <!-- Keys and input events, which the viewer's shortcuts and its idle fade read. -->
+        <dependency>
+            <groupId>sibarum.tactroller</groupId>
+            <artifactId>tactroller-api</artifactId>
+            <version>${tactroller.version}</version>
+        </dependency>
+        <!-- JSON: the installer's install record and published manifest, which the update check reads. -->
+        <dependency>
+            <groupId>dev.vexelray</groupId>
+            <artifactId>vexelray-text</artifactId>
+            <version>${vexelray.version}</version>
+        </dependency>
+        <!-- The log. -->
+        <dependency>
+            <groupId>sibarum.atchung</groupId>
+            <artifactId>atchung-probe</artifactId>
+            <version>${atchung.version}</version>
+        </dependency>
+        <!-- Pictures: decoded through imagelib, packed for the GPU, uploaded once and shown on a node (Picture,
+             Pictures, Textures, ImageView). What the viewer and the filmstrip are built on. -->
+        <dependency>
+            <groupId>dev.vexelray.codec</groupId>
+            <artifactId>vexelray-codec-image</artifactId>
+            <version>${vexelray-codec.version}</version>
+        </dependency>
+
+        <!-- The pseudo-terminal the terminal's programs run on. -->
+        <dependency>
+            <groupId>dev.sibarum</groupId>
+            <artifactId>vex-suite-common-pty</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- Exactly one pty OS module, picked by the build host's OS, so every application on this library gets its
+         platform's pseudo-terminal without naming it. -->
+    <profiles>
+        <profile>
+            <id>platform-windows</id>
+            <activation><os><family>windows</family></os></activation>
+            <dependencies>
+                <dependency>
+                    <groupId>dev.sibarum</groupId>
+                    <artifactId>vex-suite-common-pty-windows</artifactId>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>platform-linux</id>
+            <activation><os><family>unix</family><name>linux</name></os></activation>
+            <dependencies>
+                <dependency>
+                    <groupId>dev.sibarum</groupId>
+                    <artifactId>vex-suite-common-pty-linux</artifactId>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>

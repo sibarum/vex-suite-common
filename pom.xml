@@ -5,14 +5,26 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>dev.sibarum</groupId>
-    <artifactId>vex-suite-common</artifactId>
+    <artifactId>vex-suite-common-parent</artifactId>
     <version>0.1.2-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
-    <name>vex-suite-common</name>
+    <name>vex-suite-common-parent</name>
     <description>
-        What Vexplore and Pix share: the picture sizes they decode at, the viewer's tree and its parts, and the palette
-        they are drawn in. Pictures themselves (decoding, packing, textures, the image view) are vexelray-codec's.
+        What the suite's applications share, as modules: vex-suite-common itself (the viewer, the terminal widgets,
+        git, updates), and the pseudo-terminal under the terminal: vex-suite-common-pty, the platform-neutral Pty,
+        with one vex-suite-common-pty-&lt;os&gt; module per operating system.
     </description>
+
+    <modules>
+        <!-- The platform-neutral pseudo-terminal: Pty, and the PtyPlatform each OS module provides. -->
+        <module>vex-suite-common-pty</module>
+        <!-- Its OS halves. vex-suite-common's OS-activated profiles add one. -->
+        <module>vex-suite-common-pty-windows</module>
+        <module>vex-suite-common-pty-linux</module>
+        <!-- The library the applications depend on, under the artifactId they already name. -->
+        <module>vex-suite-common</module>
+    </modules>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
@@ -26,84 +38,53 @@
         <junit.version>5.11.4</junit.version>
     </properties>
 
-    <dependencies>
-        <!-- The widget shelf (TitleBar), and the GUI core and draw modules behind it. -->
-        <dependency>
-            <groupId>dev.vexelray.gui</groupId>
-            <artifactId>vexelray-gui-widget</artifactId>
-            <version>${vexelray-gui.version}</version>
-        </dependency>
-        <!-- The icon atlas: every control's icon, as a distance field. Reached through -widget as well. -->
-        <dependency>
-            <groupId>dev.vexelray.gui</groupId>
-            <artifactId>vexelray-gui-icons</artifactId>
-            <version>${vexelray-gui.version}</version>
-        </dependency>
-        <!-- The clock: the viewer's slides, the filmstrip's glide and the bar's fade. -->
-        <dependency>
-            <groupId>dev.vexelray.gui</groupId>
-            <artifactId>vexelray-gui-krono</artifactId>
-            <version>${vexelray-gui.version}</version>
-        </dependency>
-        <!-- The key map: the viewer's commands by name, on the chords and touchpad gestures the user gives them. -->
-        <dependency>
-            <groupId>dev.vexelray.gui</groupId>
-            <artifactId>vexelray-gui-keymap</artifactId>
-            <version>${vexelray-gui.version}</version>
-        </dependency>
-        <!-- Keys and input events, which the viewer's shortcuts and its idle fade read. -->
-        <dependency>
-            <groupId>sibarum.tactroller</groupId>
-            <artifactId>tactroller-api</artifactId>
-            <version>${tactroller.version}</version>
-        </dependency>
-        <!-- JSON: the installer's install record and published manifest, which the update check reads. -->
-        <dependency>
-            <groupId>dev.vexelray</groupId>
-            <artifactId>vexelray-text</artifactId>
-            <version>${vexelray.version}</version>
-        </dependency>
-        <!-- The log. -->
-        <dependency>
-            <groupId>sibarum.atchung</groupId>
-            <artifactId>atchung-probe</artifactId>
-            <version>${atchung.version}</version>
-        </dependency>
-        <!-- Pictures: decoded through imagelib, packed for the GPU, uploaded once and shown on a node (Picture,
-             Pictures, Textures, ImageView). What the viewer and the filmstrip are built on. -->
-        <dependency>
-            <groupId>dev.vexelray.codec</groupId>
-            <artifactId>vexelray-codec-image</artifactId>
-            <version>${vexelray-codec.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-pty</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-pty-windows</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-pty-linux</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>${maven.compiler.release}</release>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.2</version>
-                <configuration>
-                    <!-- Anything that reaches the codec's decoder crosses into imagelib's native library. -->
-                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
-                </configuration>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.2</version>
+                    <configuration>
+                        <!-- Every module here crosses into native code: imagelib through the codec, the OS's own
+                             pseudo-terminal calls through the pty modules. -->
+                        <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>
