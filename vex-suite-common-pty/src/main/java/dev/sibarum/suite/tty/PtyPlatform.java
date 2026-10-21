@@ -1,6 +1,9 @@
 package dev.sibarum.suite.tty;
 
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 
 /**
@@ -23,6 +26,27 @@ public interface PtyPlatform {
 
     /** The command line that runs one line of this platform's shell and exits with its status. */
     String runLine(String line);
+
+    /** {@code word} as one word for this platform's shell: as it is when it needs nothing, quoted when it does. */
+    String quote(String word);
+
+    /**
+     * The shell line that runs {@code file} when it is a program of this platform — a binary it executes, or a script
+     * it runs as one — or empty when it is not. What counts is this platform's to say: an {@code .exe}, {@code .bat}
+     * or {@code .ps1} on Windows; an executable ELF binary or {@code #!} script on Linux.
+     */
+    Optional<String> programLine(Path file);
+
+    /** The executable this platform would run for {@code name}, found on the {@code PATH} of {@code env}, if any. */
+    Optional<Path> onPath(String name, Map<String, String> env);
+
+    /**
+     * The last element of {@code file}'s short name, where this platform has them (Windows' 8.3 names): a name a
+     * shell can take with no quoting at all. Empty where there are none, or none for this file.
+     */
+    default Optional<String> shortName(Path file) {
+        return Optional.empty();
+    }
 
     /** The one platform on the class path. */
     static PtyPlatform current() {

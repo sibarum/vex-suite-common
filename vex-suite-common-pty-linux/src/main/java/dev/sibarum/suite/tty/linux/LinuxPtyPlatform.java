@@ -5,11 +5,14 @@ import dev.sibarum.suite.tty.PtyPlatform;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /** Pseudo-terminals on Linux: {@link LinuxPty}, and the shells this machine has. */
@@ -64,6 +67,43 @@ public final class LinuxPtyPlatform implements PtyPlatform {
     @Override
     public String runLine(String line) {
         return "/bin/sh -c '" + line.replace("'", "'\\''") + "'";
+    }
+
+    /** Single quotes, inside which nothing is special but the quote itself. */
+    @Override
+    public String quote(String word) {
+        return word.matches("[\\w.:/=+,@%-]+") ? word : "'" + word.replace("'", "'\\''") + "'";
+    }
+
+    /**
+     * An executable regular file that is an ELF binary or starts {@code #!}. The executable bit alone does not decide
+     * it: a VM's shared folder shows every file as executable.
+     */
+    @Override
+    public Optional<String> programLine(Path file) {
+        if (!Files.isRegularFile(file) || !Files.isExecutable(file)) {
+            return Optional.empty();
+        }
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] head = in.readNBytes(4);
+            boolean elf = head.length == 4 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F';
+            boolean script = head.length >= 2 && head[0] == '#' && head[1] == '!';
+            return elf || script ? Optional.of(quote(file.toAbsolutePath().toString())) : Optional.empty();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<Path> onPath(String name, Map<String, String> env) {
+        String path = env.get("PATH");
+        if (path == null) return Optional.empty();
+        for (String dir : path.split(File.pathSeparator)) {
+            if (dir.isBlank()) continue;
+            Path p = Path.of(dir, name);
+            if (Files.isRegularFile(p) && Files.isExecutable(p)) return Optional.of(p);
+        }
+        return Optional.empty();
     }
 
     private static Path onPath(String exe) {

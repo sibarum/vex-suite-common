@@ -96,6 +96,34 @@ class LinuxPtyTest {
     }
 
     @Test
+    void aWordIsQuotedOnlyWhenTheShellNeedsIt() {
+        PtyPlatform p = PtyPlatform.current();
+        assertEquals("/usr/bin/java", p.quote("/usr/bin/java"));
+        assertEquals("'a b'", p.quote("a b"));
+        assertEquals("'it'\\''s'", p.quote("it's"));
+    }
+
+    /** An executable file is a program only when it is a binary or a script: a shared folder marks every file so. */
+    @Test
+    void aProgramIsAnExecutableBinaryOrScript(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path script = java.nio.file.Files.writeString(dir.resolve("run me.sh"), "#!/bin/sh\necho hi\n");
+        java.nio.file.Path notes = java.nio.file.Files.writeString(dir.resolve("notes.txt"), "just text\n");
+        script.toFile().setExecutable(true);
+        notes.toFile().setExecutable(true);
+        PtyPlatform p = PtyPlatform.current();
+        assertEquals(java.util.Optional.of("'" + script.toAbsolutePath() + "'"), p.programLine(script));
+        assertTrue(p.programLine(notes).isEmpty());
+        assertTrue(p.programLine(dir.resolve("absent")).isEmpty());
+    }
+
+    @Test
+    void theShellIsOnThePath() {
+        assertTrue(PtyPlatform.current().onPath("sh", System.getenv()).isPresent());
+        assertTrue(PtyPlatform.current().onPath("no-such-program-here", System.getenv()).isEmpty());
+        assertTrue(PtyPlatform.current().shortName(java.nio.file.Path.of("/tmp")).isEmpty());
+    }
+
+    @Test
     void theLoginShellIsOffered() {
         assertFalse(PtyPlatform.current().shells().isEmpty());
     }
