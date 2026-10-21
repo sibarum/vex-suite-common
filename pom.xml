@@ -22,6 +22,9 @@
         <!-- Its OS halves. vex-suite-common's OS-activated profiles add one. -->
         <module>vex-suite-common-pty-windows</module>
         <module>vex-suite-common-pty-linux</module>
+        <!-- What updating needs from an OS, and its Windows half (the installer only installs on Windows). -->
+        <module>vex-suite-common-update</module>
+        <module>vex-suite-common-update-windows</module>
         <!-- The library the applications depend on, under the artifactId they already name. -->
         <module>vex-suite-common</module>
     </modules>
@@ -35,6 +38,7 @@
         <tactroller.version>1.2-SNAPSHOT</tactroller.version>
         <atchung.version>1.2-SNAPSHOT</atchung.version>
         <vexelray-codec.version>0.1.2-SNAPSHOT</vexelray-codec.version>
+        <supirvast.version>0.2.2-SNAPSHOT</supirvast.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
@@ -53,6 +57,16 @@
             <dependency>
                 <groupId>dev.sibarum</groupId>
                 <artifactId>vex-suite-common-pty-linux</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-update</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-update-windows</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -1,4 +1,4 @@
-package dev.sibarum.suite.update;
+package dev.sibarum.suite.update.windows;
 
 import dev.supirvast.ffi.Ffi;
 

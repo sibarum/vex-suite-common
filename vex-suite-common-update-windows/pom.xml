@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.sibarum</groupId>
+        <artifactId>vex-suite-common-parent</artifactId>
+        <version>0.1.2-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vex-suite-common-update-windows</artifactId>
+
+    <name>vex-suite-common-update-windows</name>
+    <description>
+        Updates on Windows: another application's windows asked to close and brought forward through user32, and the
+        PowerShell script that runs each installer's updater once its application has closed. An UpdatePlatform found
+        through ServiceLoader; vex-suite-common's OS-activated profile adds it.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>dev.sibarum</groupId>
+            <artifactId>vex-suite-common-update</artifactId>
+        </dependency>
+        <!-- The stack's one entry to Panama, for the user32 downcalls. -->
+        <dependency>
+            <groupId>dev.supirvast</groupId>
+            <artifactId>vastir-ffi</artifactId>
+            <version>${supirvast.version}</version>
+        </dependency>
+    </dependencies>
+</project>
