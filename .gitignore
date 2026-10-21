@@ -24,6 +24,7 @@ hs_err_pid*
 replay_pid*
 
 target/
+target-linux/
 *.png
 !src/main/resources/**/*.png
 .idea/
