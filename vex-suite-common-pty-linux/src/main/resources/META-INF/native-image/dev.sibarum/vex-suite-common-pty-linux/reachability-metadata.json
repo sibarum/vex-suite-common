@@ -1,0 +1,16 @@
+{
+  "comment": [
+    "The foreign downcalls this jar makes, by shape: tty/LinuxPty's libc calls (posix_openpt, grantpt, unlockpt, close;",
+    "ptsname_r; ioctl(TIOCSWINSZ), variadic after the request; read, write; kill). Every one is listed, including the",
+    "shapes other jars happen to register too, so a terminal never depends on what else is on the class path."
+  ],
+  "foreign": {
+    "downcalls": [
+      { "returnType": "jint", "parameterTypes": ["jint"] },
+      { "returnType": "jint", "parameterTypes": ["jint", "void*", "jlong"] },
+      { "returnType": "jint", "parameterTypes": ["jint", "jlong", "void*"], "options": { "firstVariadicArg": 2 } },
+      { "returnType": "jlong", "parameterTypes": ["jint", "void*", "jlong"] },
+      { "returnType": "jint", "parameterTypes": ["jint", "jint"] }
+    ]
+  }
+}
