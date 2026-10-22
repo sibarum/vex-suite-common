@@ -25,6 +25,7 @@ import dev.vexelray.gui.core.layout.NodeLayout;
 import dev.vexelray.gui.core.style.Relief;
 import dev.vexelray.gui.core.style.Role;
 import dev.vexelray.gui.core.style.Theme;
+import dev.vexelray.gui.draw.Sketch;
 import dev.vexelray.gui.icons.Icon;
 import dev.vexelray.gui.icons.IconView;
 import dev.vexelray.gui.krono.KronoGui;
@@ -62,19 +63,21 @@ import java.util.function.Function;
  * the picture already up where it is, under the new name and count, so holding an arrow key moves the counter at once
  * and never blanks while the application reads only where the key stops.
  *
- * <p><b>Every control is a {@link Tile}</b>: one size, an icon alone. They sit in one bar along the bottom, in three
- * groups: Close and what this is on the left, moving through the folder in the middle (Previous, the
- * {@link Filmstrip}, Next), and how it is shown on the right (Turn, Background, Settings, Keep shown). When the host
+ * <p><b>Every control is a {@link Tile}</b>: one size, an icon alone. Previous and Next are always at the window's left
+ * and right edges, halfway up; the rest sit in one bar along the bottom, in three groups: Close and what this is on the
+ * left, the {@link Filmstrip} in the middle, and how it is shown on the right (Turn, Background, Settings, Keep
+ * shown). When the host
  * {@link Host#opens opens}, the words that say what this is are its Open button, shaded on hover like a tile, and say
  * {@value #PROMPT} while nothing is open.
  *
- * <p><b>A narrow window keeps what fits</b> ({@link #fit}). With no room for a thumbnail between Previous and Next,
- * the two move out of the bar to the window's left and right edges; with no room for both side groups, Turn, Background,
- * Settings and Keep shown go, and then Close and the words. Nothing is ever drawn overlapping or cut off. While a
- * picture plays, the transport takes the filmstrip's place, and Previous and Next are at the sides.
+ * <p><b>A narrow window keeps what fits</b> ({@link #fit}). With no room for a thumbnail, the filmstrip goes; with no
+ * room for both side groups, Turn, Background, Settings and Keep shown go, and then Close and the words, and in a
+ * window narrower than three tiles Previous and Next. Nothing is ever drawn overlapping or cut off. While a picture
+ * plays, the transport takes the filmstrip's place.
  *
  * <p><b>The picture has the whole window</b> under the title bar, and the controls float over it: when the pointer
- * rests they fade, after {@link #IDLE_MS}, and moving the mouse, clicking or pressing Tab brings them back. <b>Keep
+ * rests they fade, after {@link #IDLE_MS}, wherever it rests, on them too, and moving the mouse, clicking or pressing
+ * Tab brings them back. Only an open menu, or a button held on a control, keeps them while the pointer rests. <b>Keep
  * shown</b> pins them: they stop fading, the pin stands upright on the chosen fill, and they take room of their own,
  * the picture shrinking to the rest so that no control covers any of it. The menus are drawn over the picture either
  * way; one closes on a second press, a click on the picture, or Escape, and the backdrop's on a choice too.
@@ -102,8 +105,7 @@ import java.util.function.Function;
  * {@link #MUTE} and {@link #VOLUME}, and over the seek bar a video's {@link #GLANCE}.
  *
  * <p><b>A picture that plays is played like a movie</b> ({@code Playback}): while it is up, a transport takes the
- * filmstrip's place in the middle of the bar, Previous and Next going to the window's sides, with play and pause, a
- * frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with the bar. Nothing floats above
+ * filmstrip's place in the middle of the bar, with play and pause, a frame back and on, a seek bar to drag, the clock and frame, and loop, and fades with the bar. Nothing floats above
  * the bar, so the picture keeps all the height the bar leaves it. Space plays and pauses, comma and period step a frame, with Shift a second, and L turns looping on and off.
  * It plays as soon as it is shown, round and round, and holds while the window is not focused. One with sound (a
  * video's) has Mute and a volume slider after Loop, and M mutes and unmutes; the level and the mute carry over to the
@@ -200,6 +202,8 @@ public final class PictureViewer {
     public static final String BACKGROUND = "background";
     public static final String KEEP = "keep";
     public static final String BACKDROP = "backdrop.";
+    /** After {@link #BACKDROP}: the Auto swatch, the picture's own colour or the checkerboard. */
+    public static final String AUTO = "auto";
     public static final String SETTINGS = "settings";
     /** The Turn tile, and its menu's actions. */
     public static final String TURN = "turn";
@@ -231,6 +235,8 @@ public final class PictureViewer {
     /** How long the pointer rests before the controls fade, and how long the fade takes. */
     public static final int IDLE_MS = 1200;
     private static final int FADE_MS = 240;
+    /** How long Auto's room takes to become the next picture's: about as long as the picture takes to come in. */
+    private static final int AMBIENCE_MS = 360;
     /** A frame of the picture's motion: zoom easing, a fling, the spring back. */
     private static final int FRAME_MS = 16;
     /** How long the picture rests before the sharper copy of it is made. */
@@ -288,7 +294,7 @@ public final class PictureViewer {
     private final Node title;
     private final Node browse;
     private final Node tools;
-    /** Where Previous and Next go when the bar has no room for them: the window's left and right edges. */
+    /** Where Previous and Next are: the window's left and right edges. */
     private final Node leftSide;
     private final Node rightSide;
     /**
@@ -322,10 +328,21 @@ public final class PictureViewer {
     private final Map<ImageFilter, Choice> movingChoices = new EnumMap<>(ImageFilter.class);
     private final Map<ImageFilter, Choice> restingChoices = new EnumMap<>(ImageFilter.class);
     private final Map<Backdrop, Tile> swatches = new EnumMap<>(Backdrop.class);
+    private final Tile autoSwatch;
 
     /** The window's box, for drawing the checkerboard across it, and the size it was last drawn at. */
     private volatile NodeLayout windowBox = NodeLayout.ABSENT;
     private long checkered = -1;
+    /**
+     * Whether the backdrop is Auto, chosen by the picture rather than the user: the picture's {@link Ambience} behind
+     * an opaque one, the checkerboard behind one with transparency. Guarded by this, as is the rest of the backdrop.
+     */
+    private boolean auto = true;
+    /** The picture shown's room, or null for one with transparency, or none; and what the window is filled with. */
+    private Color ambience;
+    private Color fill;
+    /** Bumped by every change of fill, so an older fade stops. */
+    private final AtomicInteger fills = new AtomicInteger();
 
     /** How the picture is looked at, and its motion while it moves. Guarded by the lens. */
     private final Lens lens = new Lens();
@@ -369,8 +386,15 @@ public final class PictureViewer {
     /** How the picture is scaled moving (the GPU, every frame) and at rest (made again, {@link Sharpen}). */
     private volatile ImageFilter moving = ImageFilter.BILINEAR;
     private volatile ImageFilter resting = ImageFilter.LANCZOS;
-    /** Which of {@link #chrome} the pointer is on, a bit each: none fades from under the pointer. */
+    /**
+     * Which of {@link #chrome} the pointer is on, a bit each, so the wheel and the touchpad over a control are not the
+     * picture's; and which a button is held down on. The controls fade from under a pointer resting on them, but not
+     * from under a held button: a drag on the seek bar that pauses is still a drag.
+     */
     private final AtomicInteger over = new AtomicInteger();
+    private final AtomicInteger held = new AtomicInteger();
+    /** Whether the pointer is on the seek bar, so the glance over it comes back with the bar. */
+    private volatile boolean onSeek;
     private final AtomicInteger fade = new AtomicInteger();
     private Scheduled idle;
 
@@ -379,7 +403,6 @@ public final class PictureViewer {
      * transport is up. Guarded by the fit lock: the playing's thread refits too, as the transport comes and goes.
      */
     private final Object fitLock = new Object();
-    private boolean arrowsInBar = true;
     private boolean arrowsAtSides;
     private float tilePx;
     private float deckPx;
@@ -446,15 +469,15 @@ public final class PictureViewer {
             button(words, host::open);
         }
         this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
-        this.browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(prev.node(), strip.node(), next.node());
+        this.browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(strip.node());
         this.tools = slab(gui.row()).alignItems(AlignItems.CENTER)
                 .children(turn.node(), background.node(), settings.node(), keep.node());
 
         Node left = gui.row().width(Length.grow(1f)).height(Length.AUTO).scroll(false, false).children(title);
         Node right = gui.row().width(Length.grow(1f)).height(Length.AUTO).justify(Justify.END).scroll(false, false)
                 .children(tools);
-        this.leftSide = side(Length.ZERO);
-        this.rightSide = side(Length.percent(100f));
+        this.leftSide = side(Length.ZERO).children(prev.node());
+        this.rightSide = side(Length.percent(100f)).children(next.node());
 
         // The transport: shown only while the picture in front plays, in the bar's middle, fading with it.
         this.play = Tile.of(gui, Icon.PLAY, "Play").onPress(() -> playback(Playback::toggle));
@@ -504,10 +527,20 @@ public final class PictureViewer {
         this.chrome = List.of(controls, leftSide, rightSide);
         for (int i = 0; i < chrome.size(); i++) {
             int bit = 1 << i;
-            gui.onState(chrome.get(i), s -> over.getAndUpdate(o -> s == InteractionState.NORMAL ? o & ~bit : o | bit));
+            gui.onState(chrome.get(i), s -> {
+                over.getAndUpdate(o -> s == InteractionState.NORMAL ? o & ~bit : o | bit);
+                held.getAndUpdate(o -> s == InteractionState.PRESSED ? o | bit : o & ~bit);
+            });
         }
 
         Node choices = gui.row().height(Length.AUTO).gap(Tile.GAP).scroll(false, false);
+        this.autoSwatch = Tile.of(gui, autoSwatch(), "Auto: the picture's own colour, or checks behind transparency")
+                .onPress(() -> {
+                    autoBackdrop();
+                    closeMenu();
+                });
+        gui.landmark(landmarks + BACKDROP + AUTO, autoSwatch.node());
+        choices.append(autoSwatch.node());
         for (Backdrop b : Backdrop.values()) {
             Tile t = Tile.of(gui, swatch(b), b.label()).onPress(() -> {
                 backdrop(b);
@@ -570,14 +603,17 @@ public final class PictureViewer {
         // Over the seek bar, a video's frame at the pointer: it follows the pointer along the bar, dragged or not.
         this.glance = new Glance(gui, textures, stage, deck, seek.node());
         gui.landmark(landmarks + GLANCE, glance.node());
-        gui.onState(seek.node(), s -> glance.hover(s != InteractionState.NORMAL));
+        gui.onState(seek.node(), s -> {
+            onSeek = s != InteractionState.NORMAL;
+            glance.hover(onSeek && !hidden);
+        });
         gui.root().direction(Direction.COLUMN).children(bar.node(), stage, controls);
         dock();
         gui.onResize(gui.root(), box -> {
             windowBox = box;
             paintBackdrop();
         });
-        backdrop(Backdrop.DARK);
+        autoBackdrop();
 
         // The commands, by name, on the keys and gestures they start with; the user's key map has the last word. Three
         // fingers swiping left take the picture away to the left, so the next one comes in from the right, as it is
@@ -743,6 +779,7 @@ public final class PictureViewer {
                 still();
                 sharpen.forget();
                 image.clear();
+                ambience(null);
                 look(l -> {
                     l.reset();
                     l.measure(null);
@@ -763,6 +800,9 @@ public final class PictureViewer {
             if (image.show(want, direction(s.pictures(), shownPath, at))) {
                 shown = want;
                 shownPath = at;
+                if (!same) {
+                    ambience(want);
+                }
                 look(l -> {
                     if (!same) {
                         l.reset();
@@ -819,28 +859,27 @@ public final class PictureViewer {
      */
     static int thumbnails(float barWidth, float sideWidth, float tile, float gap, float barGap) {
         float middle = barWidth - 2f * sideWidth - 2f * barGap;
-        // The middle slab: its padding, Previous and Next, and a gap after each tile but the last.
-        float room = middle - 2f * gap - 2f * tile - gap;
+        // The middle slab: its padding, and a gap after each thumbnail but the last.
+        float room = middle - 2f * gap + gap;
         return room <= 0f ? 0 : (int) (room / (tile + gap));
     }
 
     /**
      * What the bar shows at a width.
      *
-     * @param thumbnails  how many the filmstrip shows
-     * @param arrowsInBar Previous and Next in the bar, either side of the filmstrip; otherwise at the window's sides
-     * @param sides       whether they are shown at the window's sides
-     * @param title       Close and the words
-     * @param tools       Turn, Background, Settings and Keep shown
+     * @param thumbnails how many the filmstrip shows; at none it goes
+     * @param sides      whether Previous and Next are shown at the window's sides
+     * @param title      Close and the words
+     * @param tools      Turn, Background, Settings and Keep shown
      */
-    record Fit(int thumbnails, boolean arrowsInBar, boolean sides, boolean title, boolean tools) {
+    record Fit(int thumbnails, boolean sides, boolean title, boolean tools) {
     }
 
     /**
      * What fits a bar {@code width} px across inside its margins, its tiles {@code tile} px square. The middle group
-     * comes first while it has room for a thumbnail; then Previous and Next go to the window's sides, and the two side
-     * groups share the bar, until they do not fit side by side, when Turn, Background, Settings and Keep shown go, and then
-     * the rest.
+     * comes first while it has room for a thumbnail; then the two side groups share the bar, until they do not fit
+     * side by side, when Turn, Background, Settings and Keep shown go, and then the rest. Previous and Next are at the
+     * window's sides while it is three tiles across.
      */
     static Fit fit(float width, float tile) {
         return fit(width, tile, 0f);
@@ -848,8 +887,8 @@ public final class PictureViewer {
 
     /**
      * The same, with the transport {@code deck} px across in the bar's middle in the filmstrip's place, or none at 0.
-     * With it, Previous and Next are at the sides, and the two side groups stay while each has half of what the
-     * transport leaves; otherwise both go, so the transport stays centred.
+     * With it, the two side groups stay while each has half of what the transport leaves; otherwise both go, so the
+     * transport stays centred.
      */
     static Fit fit(float width, float tile, float deck) {
         float gap = tile / 9f;
@@ -857,19 +896,19 @@ public final class PictureViewer {
         // Each slab: its tiles, its padding and a gap between each two, and its 1 px edges.
         float title = tile + tile * TITLE_REM / Tile.SIDE_REM + 3f * gap + 2f;
         float tools = 4f * tile + 5f * gap + 2f;   // Turn, Background, Settings and Keep shown
+        boolean sides = width >= 3f * tile;
         if (deck > 0f) {
             boolean both = Math.max(title, tools) <= (width - deck - 2f * barGap) / 2f;
-            return new Fit(0, false, width >= 3f * tile, both, both);
+            return new Fit(0, sides, both, both);
         }
         int n = thumbnails(width, Math.max(title, tools), tile, gap, barGap);
         if (n > 0) {
-            return new Fit(n, true, false, true, true);
+            return new Fit(n, sides, true, true);
         }
-        boolean sides = width >= 3f * tile;
         if (Math.max(title, tools) <= (width - barGap) / 2f) {
-            return new Fit(0, false, sides, true, true);
+            return new Fit(0, sides, true, true);
         }
-        return new Fit(0, false, sides, title <= width, false);
+        return new Fit(0, sides, title <= width, false);
     }
 
     /** Apply {@link #fit} to the bar's box: on a new one, and as the transport comes, goes and changes. */
@@ -893,17 +932,7 @@ public final class PictureViewer {
         // Until the deck is first laid out it is taken to fit; its measure follows at once, and fits the bar again.
         Fit f = fit(box.content().w(), tilePx, playing ? Math.max(deckPx, 1f) : 0f);
         strip.fit(f.thumbnails());
-        if (f.arrowsInBar() != arrowsInBar) {
-            arrowsInBar = f.arrowsInBar();
-            if (arrowsInBar) {
-                browse.insert(prev.node(), 0);
-                browse.append(next.node());
-            } else {
-                leftSide.append(prev.node());
-                rightSide.append(next.node());
-            }
-        }
-        browse.visible(f.arrowsInBar());
+        browse.visible(f.thumbnails() > 0);
         title.visible(f.title());
         tools.visible(f.tools());
         leftSide.visible(f.sides());
@@ -922,7 +951,7 @@ public final class PictureViewer {
 
     /**
      * Float the controls over the picture, or, pinned, give them room of their own: the bar its height under the
-     * picture and, when Previous and Next are at the sides, those their width either side of it.
+     * picture and, while Previous and Next are shown at the sides, those their width either side of it.
      */
     private void dock() {
         boolean pinned = keepShown;
@@ -1159,20 +1188,65 @@ public final class PictureViewer {
 
     // ---------------------------------------------------------------- background
 
-    private void backdrop(Backdrop b) {
+    /** A backdrop the user chose: that, whatever the picture. */
+    private synchronized void backdrop(Backdrop b) {
+        auto = false;
         image.backdrop(b);
         paintBackdrop();
         swatches.forEach((k, t) -> t.on(k == b));
+        autoSwatch.on(false);
+    }
+
+    /** Auto: the picture's own colour behind an opaque picture, and the checkerboard behind transparency. */
+    private synchronized void autoBackdrop() {
+        auto = true;
+        paintBackdrop();
+        swatches.forEach((k, t) -> t.on(false));
+        autoSwatch.on(true);
+    }
+
+    /** The picture shown is {@code p}, or none: its room, for Auto. */
+    private synchronized void ambience(Picture p) {
+        ambience = p == null ? null : Ambience.of(p);
+        if (auto) {
+            paintBackdrop();
+        }
+    }
+
+    /**
+     * What is behind the picture: the user's choice, or for Auto the checkerboard behind a picture with transparency,
+     * the picture's room behind an opaque one, and the dark backdrop while there is none.
+     */
+    private synchronized Backdrop behind() {
+        if (!auto) {
+            return image.backdrop();
+        }
+        Picture p = shown;
+        return p != null && ambience == null ? Backdrop.CHECKER : Backdrop.DARK;
     }
 
     /**
      * The backdrop is the whole window's, not only the picture's: the window's own fill, and for the checkerboard its
      * drawing, redrawn when the window changes size. The picture's frames are bare, so one pattern runs behind it all.
+     * Auto's room fades from one picture's to the next as they pass.
      */
     private synchronized void paintBackdrop() {
-        Backdrop b = image.backdrop();
+        Backdrop b = behind();
         Node root = gui.root();
-        root.background(ImageView.color(gui.theme(), b));
+        Color to = auto && ambience != null ? ambience : ImageView.color(gui.theme(), b);
+        // A fill fades into the next only from a fill: a checkerboard comes and goes at once.
+        Color from = checkered == -1 ? fill : null;
+        fill = to;
+        int g = fills.incrementAndGet();
+        if (auto && from != null && b != Backdrop.CHECKER && !from.equals(to) && active) {
+            krono.ramp(Dur.ms(AMBIENCE_MS), Ease.OUT_CUBIC, t -> {
+                if (fills.get() == g) {
+                    root.background(Color.lerp(from, to, (float) t));
+                }
+            }, () -> { });
+        } else {
+            root.background(to);
+        }
         if (b != Backdrop.CHECKER) {
             root.picture(null);
             checkered = -1;
@@ -1364,6 +1438,30 @@ public final class PictureViewer {
         restingChoices.forEach((f, c) -> c.on(f == r));
     }
 
+    /**
+     * Auto's swatch: what it can be, halved across. Small checks on the left, and on the right a dusk that warms from
+     * blue to amber, as rooms do from one picture to the next.
+     */
+    private Node autoSwatch() {
+        Node s = gui.box().size(SWATCH, SWATCH).corner(Length.rem(0.5f)).clip(true)
+                .background(ImageView.color(gui.theme(), Backdrop.CHECKER))
+                .border(Length.dp(1.5f), gui.theme().color(Role.INK));
+        gui.onResize(s, box -> {
+            int w = Math.round(box.rect().w());
+            int h = Math.round(box.rect().h());
+            if (w > 0 && h > 0) {
+                Sketch art = ImageView.checks(w / 2, h, Math.max(3, w / 4));
+                Color cool = Ambience.room(0.5f, -0.02f, -0.08f);
+                Color warm = Ambience.room(0.7f, 0.03f, 0.08f);
+                for (int y = 0; y < h; y++) {
+                    art.fill(w / 2, y, w - w / 2, 1, Color.lerp(cool, warm, (y + 0.5f) / h));
+                }
+                s.picture(art.picture());
+            }
+        });
+        return s;
+    }
+
     /** A swatch of what {@code b} shows behind a picture: its colour, or a small checkerboard. */
     private Node swatch(Backdrop b) {
         Node s = gui.box().size(SWATCH, SWATCH).corner(Length.rem(0.5f)).clip(true)
@@ -1421,10 +1519,12 @@ public final class PictureViewer {
             arm(IDLE_MS - quiet);
             return;
         }
-        if (keepShown || open != null || over.get() != 0) {
+        // A menu open keeps them, until it is closed; the pointer resting on them does not.
+        if (keepShown || open != null || held.get() != 0) {
             return;
         }
         hidden = true;
+        glance.hover(false);
         int g = fade.incrementAndGet();
         chrome.forEach(n -> n.hitInert(true));
         krono.ramp(Dur.ms(FADE_MS), Ease.LINEAR, p -> {
@@ -1438,6 +1538,9 @@ public final class PictureViewer {
         fade.incrementAndGet();
         hidden = false;
         chrome.forEach(n -> n.opacity(1f).hitInert(false));
+        if (onSeek) {
+            glance.hover(true);
+        }
     }
 
     // ---------------------------------------------------------------- building

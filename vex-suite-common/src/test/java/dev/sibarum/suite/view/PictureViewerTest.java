@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,39 +68,39 @@ class PictureViewerTest {
 
     @Test
     void thumbnailsTakeWhatTheTwoSidesLeave() {
-        // 72 px tiles and 8 px gaps, as drawn at the design's size: the middle slab is 16 + 72 + (n + 1) * 80.
+        // 72 px tiles and 8 px gaps, as drawn at the design's size: the middle slab is 16 + n * 80 - 8.
         float tile = 72f;
         float gap = 8f;
         float side = 300f;
-        float middleFor7 = 2 * gap + 9 * tile + 8 * gap;
+        float middleFor7 = 2 * gap + 7 * tile + 6 * gap;
         assertEquals(7, PictureViewer.thumbnails(2 * side + 2 * 16f + middleFor7, side, tile, gap, 16f));
         assertEquals(6, PictureViewer.thumbnails(2 * side + 2 * 16f + middleFor7 - 1f, side, tile, gap, 16f));
-        assertEquals(0, PictureViewer.thumbnails(500f, side, tile, gap, 16f), "no room: Previous and Next only");
+        assertEquals(0, PictureViewer.thumbnails(700f, side, tile, gap, 16f), "no room for one");
     }
 
     @Test
     void aNarrowBarKeepsWhatFits() {
         // 72 px tiles: the title slab is 72 + 160 + 24 + 2 = 258 px, the tools slab 144 + 24 + 2 = 170 px.
         PictureViewer.Fit wide = PictureViewer.fit(1400f, 72f);
-        assertTrue(wide.arrowsInBar() && wide.thumbnails() > 0 && wide.title() && wide.tools());
-        assertFalse(wide.sides());
+        assertTrue(wide.thumbnails() > 0 && wide.title() && wide.tools());
+        assertTrue(wide.sides(), "Previous and Next are at the sides however wide the window");
 
         PictureViewer.Fit noFilm = PictureViewer.fit(700f, 72f);
-        assertEquals(new PictureViewer.Fit(0, false, true, true, true), noFilm, "the arrows go to the sides");
+        assertEquals(new PictureViewer.Fit(0, true, true, true), noFilm, "the filmstrip goes first");
 
         PictureViewer.Fit narrow = PictureViewer.fit(400f, 72f);
-        assertEquals(new PictureViewer.Fit(0, false, true, true, false), narrow, "Background and Keep shown go first");
+        assertEquals(new PictureViewer.Fit(0, true, true, false), narrow, "then Background and Keep shown");
 
         PictureViewer.Fit tiny = PictureViewer.fit(200f, 72f);
-        assertEquals(new PictureViewer.Fit(0, false, false, false, false), tiny, "and then everything");
+        assertEquals(new PictureViewer.Fit(0, false, false, false), tiny, "and then everything");
     }
 
     @Test
     void aPlayingPictureHasTheTransportWhereTheFilmstripWas() {
         // 72 px tiles, a 600 px transport: each side group needs 258 px of what the transport leaves, halved.
-        assertEquals(new PictureViewer.Fit(0, false, true, true, true), PictureViewer.fit(1400f, 72f, 600f),
+        assertEquals(new PictureViewer.Fit(0, true, true, true), PictureViewer.fit(1400f, 72f, 600f),
                 "no filmstrip, and the arrows at the sides, however wide the bar");
-        assertEquals(new PictureViewer.Fit(0, false, true, false, false), PictureViewer.fit(1000f, 72f, 600f),
+        assertEquals(new PictureViewer.Fit(0, true, false, false), PictureViewer.fit(1000f, 72f, 600f),
                 "both side groups go together, so the transport stays centred");
     }
 }

@@ -64,9 +64,11 @@ tty/                a terminal: a program on a pseudoconsole, its output as a sc
   CellArt           box drawing, block elements and braille, drawn as rectangles so a TUI's lines meet.
 
 view/               the viewer and its parts, on vexelray-gui.
-  PictureViewer     the whole viewer tree: the picture, and a bar over it of Close, the name (Open, when the host
-                    opens), Previous, the filmstrip, Next, Background and Keep shown, which fades when the
-                    pointer rests, and when pinned takes room of its own. Told what to show (Showing); tells
+  PictureViewer     the whole viewer tree: the picture, Previous and Next at the window's sides, and a bar over it
+                    of Close, the name (Open, when the host opens), the filmstrip, Background and Keep shown, which
+                    fade when the pointer rests (on them too; an open menu keeps them), and when pinned take room
+                    of their own. The Auto backdrop is the picture's room (Ambience) or, behind transparency, the
+                    checkerboard. Told what to show (Showing); tells
                     the application what the user did (Host). Its commands are actions on a Keymap (view.next,
                     play.toggle, ...) with keys and touchpad gestures as defaults; two fingers always pan, and zoom
                     and turn only once they plainly mean to (Manipulation). Vexplore shows it in a second window, Pix
@@ -114,7 +116,7 @@ main window over a document of its own (a folder, its images, the one shown).
 ## Landmarks
 
 `PictureViewer` names its parts for automation scripts with a prefix the application chooses: `name`, `info`,
-`count`, `close`, `open`, `previous`, `next`, `background`, `keep`, `backdrop.dark` and the other backdrops. Pix uses no
+`count`, `close`, `open`, `previous`, `next`, `background`, `keep`, `backdrop.auto`, `backdrop.dark` and the other backdrops. Pix uses no
 prefix; Vexplore uses `viewer.`, and its viewer is reached with `ottermate --window viewer`.
 
 ## Application icons
