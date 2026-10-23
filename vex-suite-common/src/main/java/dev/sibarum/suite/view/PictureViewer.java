@@ -409,6 +409,17 @@ public final class PictureViewer {
     private boolean playing;
 
     /**
+     * The transport's state as {@link #showTransport} last wrote it, so a frame that moves only the clock and the seek
+     * bar writes only those. Null until the first write. Guarded by the fit lock.
+     */
+    private Deck shownDeck;
+
+    /** Everything the transport shows that a frame of a video does not move. */
+    private record Deck(boolean up, boolean keys, boolean wanted, boolean loop, boolean sounds, boolean muted,
+                        float level) {
+    }
+
+    /**
      * Build the viewer into {@code gui}'s root, under {@code bar}, which it places and titles.
      *
      * @param thumbnail the picture already decoded for an image, or null; called off the GUI thread
@@ -1573,6 +1584,30 @@ public final class PictureViewer {
     private void showTransport() {
         Playback p = image.playback();
         boolean up = p != null && active;
+        boolean keys = p != null && active && p.motion().source() != Motion.ANIMATION;
+        Deck now = p == null ? new Deck(up, keys, false, false, false, false, 0f)
+                : new Deck(up, keys, p.wanted(), p.loop(), p.sounds(), p.muted(), p.volume());
+        boolean moved;
+        synchronized (fitLock) {
+            moved = !now.equals(shownDeck);
+            shownDeck = now;
+        }
+        if (moved) {
+            showDeck(now, p != null);
+        }
+        glance.playing(active ? p : null);
+        if (p == null) {
+            return;
+        }
+        long d = p.duration();
+        long at = Math.min(p.position(), d);
+        seek.show(d > 0 ? (float) at / d : 0f);
+        clock.text(readout(at, d, p.frame(), p.count(), p.failure()));
+    }
+
+    /** Write {@code now} to the transport: only when it has changed, which a frame of a video does not do. */
+    private void showDeck(Deck now, boolean plays) {
+        boolean up = now.up();
         transport.visible(up);
         boolean changed;
         synchronized (fitLock) {
@@ -1583,26 +1618,21 @@ public final class PictureViewer {
             // The transport in the bar's middle and the arrows at the sides, or the filmstrip back between them.
             refit(controls.layout());
         }
-        glance.playing(active ? p : null);
-        videoKeys.disabled(p == null || !active || p.motion().source() == Motion.ANIMATION);
-        if (p == null) {
+        videoKeys.disabled(!now.keys());
+        if (!plays) {
             return;
         }
-        play.icon(p.wanted() ? Icon.PAUSE : Icon.PLAY);
-        loop.on(p.loop());
-        boolean sounds = p.sounds();
+        play.icon(now.wanted() ? Icon.PAUSE : Icon.PLAY);
+        loop.on(now.loop());
+        boolean sounds = now.sounds();
         sound.visible(sounds);
         if (sounds) {
-            boolean muted = p.muted();
-            float level = p.volume();
+            boolean muted = now.muted();
+            float level = now.level();
             mute.on(muted);
             mute.icon(muted || level == 0f ? Icon.VOLUME_MUTED : level < 0.5f ? Icon.VOLUME_LOW : Icon.VOLUME_HIGH);
             volume.show(muted ? 0f : level);
         }
-        long d = p.duration();
-        long at = Math.min(p.position(), d);
-        seek.show(d > 0 ? (float) at / d : 0f);
-        clock.text(readout(at, d, p.frame(), p.count(), p.failure()));
     }
 
     /** "0:01.2 / 0:04.0": where the clock is, and how long a pass is. */
