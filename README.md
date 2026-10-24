@@ -139,3 +139,13 @@ at 24 and 16 px:
 java ... tools/Ico.java ../Pix/src/main/rc/pix-background.svg ../Pix/src/main/rc/pix-background.ico \
      16=../Pix/src/main/rc/pix-background-16.svg 24=../Pix/src/main/rc/pix-background-24.svg
 ```
+
+Art shown larger than an icon goes past the `.ico`'s 256 px. `tools/Png.java` renders one SVG as a PNG at each side
+named, `{side}` in the output name standing for it; it uses `Ico`'s encoder, so it runs from `tools/` beside it. The
+framework's About window logo is made so, at 1x to 4x of its 96 px:
+
+```
+java ... tools/Png.java ../vexelray-framework/vexelray-framework-shell/src/main/rc/vexelray-logo.svg \
+     ../vexelray-framework/vexelray-framework-shell/src/main/resources/dev/vexelray/framework/shell/vexelray-logo-{side}.png \
+     96 192 288 384
+```
