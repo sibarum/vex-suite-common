@@ -63,6 +63,13 @@
             <artifactId>atchung-probe</artifactId>
             <version>${atchung.version}</version>
         </dependency>
+        <!-- @Trace: methods that write a row naming themselves on the probe's trace lane (vexelray/docs/trace.md).
+             The weave goal below writes the calls. -->
+        <dependency>
+            <groupId>dev.vexelray</groupId>
+            <artifactId>vexelray-trace</artifactId>
+            <version>${vexelray.version}</version>
+        </dependency>
         <!-- Pictures: decoded through imagelib, packed for the GPU, uploaded once and shown on a node (Picture,
              Pictures, Textures, ImageView). What the viewer and the filmstrip are built on. -->
         <dependency>
@@ -88,6 +95,23 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>dev.vexelray</groupId>
+                <artifactId>vexelray-trace-maven-plugin</artifactId>
+                <version>${vexelray.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>weave</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
     <!-- Exactly one pty OS module, picked by the build host's OS, so every application on this library gets its
          platform's pseudo-terminal without naming it. -->

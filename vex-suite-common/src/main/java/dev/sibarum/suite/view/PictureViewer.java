@@ -33,6 +33,7 @@ import dev.vexelray.gui.krono.Scheduled;
 import dev.vexelray.gui.keymap.Keymap;
 import dev.vexelray.gui.widget.Slider;
 import dev.vexelray.gui.widget.TitleBar;
+import dev.vexelray.trace.Trace;
 import sibarum.kronometer.Dur;
 import sibarum.kronometer.Time;
 import sibarum.kronometer.anim.Ease;
@@ -925,6 +926,7 @@ public final class PictureViewer {
     }
 
     /** The same, with the title slab holding the Close tile or, when not {@code closes}, the words alone. */
+    @Trace(value = "fit", args = {"width", "tile", "deck", "closes"})
     static Fit fit(float width, float tile, float deck, boolean closes) {
         float gap = tile / 9f;
         float barGap = 2f * gap;
@@ -988,6 +990,7 @@ public final class PictureViewer {
      * Float the controls over the picture, or, pinned, give them room of their own: the bar its height under the
      * picture and, while Previous and Next are shown at the sides, those their width either side of it.
      */
+    @Trace("dock")
     private void dock() {
         boolean pinned = keepShown;
         if (pinned) {
@@ -1007,6 +1010,7 @@ public final class PictureViewer {
      * Change how the picture is looked at, draw it, and keep it moving for as long as it moves. From any thread.
      * The lens is the lock, taken after this one and before the view's, never the other way round.
      */
+    @Trace("look")
     private void look(java.util.function.Consumer<Lens> change) {
         synchronized (lens) {
             change.accept(lens);
@@ -1539,6 +1543,7 @@ public final class PictureViewer {
     }
 
     /** The timer ran out: fade the bar if nothing has happened since, or wait out what is left. */
+    @Trace("rest")
     private void rest() {
         synchronized (this) {
             idle = null;
@@ -1569,6 +1574,7 @@ public final class PictureViewer {
         }, () -> fadedAt = g);
     }
 
+    @Trace("reveal")
     private void reveal() {
         fade.incrementAndGet();
         hidden = false;
@@ -1615,6 +1621,7 @@ public final class PictureViewer {
      * Show the transport as the picture's playing has it, or hide it when the picture does not play. Called whenever
      * the playing moves, a frame at a time, so it only writes.
      */
+    @Trace(value = "transport", timed = true)
     private void showTransport() {
         Playback p = image.playback();
         boolean up = p != null && active;
@@ -1640,6 +1647,7 @@ public final class PictureViewer {
      * Move the seek bar and the clock to where {@code p} is, as one edit. Not while the bar is faded out: a frame of a
      * video would write them for nobody to see, and {@link #reveal} writes them before they show again.
      */
+    @Trace("clock")
     private void showClock(Playback p) {
         long d = p.duration();
         long at = Math.min(p.position(), d);
@@ -1651,6 +1659,7 @@ public final class PictureViewer {
     }
 
     /** Write {@code now} to the transport: only when it has changed, which a frame of a video does not do. */
+    @Trace(value = "deck", args = {"plays"})
     private void showDeck(Deck now, boolean plays) {
         boolean up = now.up();
         transport.visible(up);
