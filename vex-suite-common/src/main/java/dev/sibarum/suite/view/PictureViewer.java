@@ -64,8 +64,8 @@ import java.util.function.Function;
  * and never blanks while the application reads only where the key stops.
  *
  * <p><b>Every control is a {@link Tile}</b>: one size, an icon alone. Previous and Next are always at the window's left
- * and right edges, halfway up; the rest sit in one bar along the bottom, in three groups: Close and what this is on the
- * left, the {@link Filmstrip} in the middle, and how it is shown on the right (Turn, Background, Settings, Keep
+ * and right edges, halfway up; the rest sit in one bar along the bottom, in three groups: Close (where the host {@linkplain
+ * Host#closes has it}) and what this is on the left, the {@link Filmstrip} in the middle, and how it is shown on the right (Turn, Background, Settings, Keep
  * shown). When the host
  * {@link Host#opens opens}, the words that say what this is are its Open button, shaded on hover like a tile, and say
  * {@value #PROMPT} while nothing is open.
@@ -131,6 +131,14 @@ public final class PictureViewer {
 
         /** Close the viewer: the Close tile, or Escape with no menu open. */
         void close();
+
+        /**
+         * Whether the bar has a Close tile. Asked once, when the viewer is built. Yes by default: Vexplore's viewer is
+         * a window beside the explorer. Escape closes either way.
+         */
+        default boolean closes() {
+            return true;
+        }
 
         /**
          * Whether the viewer offers to open something else: the words beside Close become a button. Asked once, when the viewer is built. No by default: Vexplore's viewer shows what its explorer
@@ -275,6 +283,8 @@ public final class PictureViewer {
     private final KronoGui krono;
     private final Host host;
     private final boolean opens;
+    /** Whether the bar has a Close tile ({@link Host#closes}). */
+    private final boolean closes;
     /** Whether a double click puts the window full screen ({@link Host#fullscreens}), and whether it is. */
     private final boolean fullscreens;
     private volatile boolean fullscreen;
@@ -443,6 +453,7 @@ public final class PictureViewer {
         this.bar = bar;
         this.opens = host.opens();
         this.fullscreens = host.fullscreens();
+        this.closes = host.closes();
 
         this.name = text("", SuiteType.BODY, Role.INK, SuiteType.UI);
         this.info = text("", SuiteType.SMALL, SuiteLook.TEXT, SuiteType.MONO);
@@ -462,7 +473,9 @@ public final class PictureViewer {
         this.settings = Tile.of(gui, Icon.SETTINGS, "Settings").toggle().onPress(this::toggleSettings);
         this.turn = Tile.of(gui, Icon.ROTATE, "Turn").toggle().onPress(this::toggleTurn);
         this.keep = Tile.of(gui, Icon.PIN_UP, "Keep shown").toggle().onPress(this::toggleKeep);
-        gui.landmark(landmarks + CLOSE, close.node());
+        if (closes) {
+            gui.landmark(landmarks + CLOSE, close.node());
+        }
         gui.landmark(landmarks + PREVIOUS, prev.node());
         gui.landmark(landmarks + NEXT, next.node());
         gui.landmark(landmarks + BACKGROUND, background.node());
@@ -479,7 +492,8 @@ public final class PictureViewer {
             gui.landmark(landmarks + OPEN, words);
             button(words, host::open);
         }
-        this.title = slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words);
+        this.title = closes ? slab(gui.row()).alignItems(AlignItems.CENTER).children(close.node(), words)
+                : slab(gui.row()).alignItems(AlignItems.CENTER).children(words);
         this.browse = slab(gui.row()).alignItems(AlignItems.CENTER).children(strip.node());
         this.tools = slab(gui.row()).alignItems(AlignItems.CENTER)
                 .children(turn.node(), background.node(), settings.node(), keep.node());
@@ -902,10 +916,15 @@ public final class PictureViewer {
      * transport stays centred.
      */
     static Fit fit(float width, float tile, float deck) {
+        return fit(width, tile, deck, true);
+    }
+
+    /** The same, with the title slab holding the Close tile or, when not {@code closes}, the words alone. */
+    static Fit fit(float width, float tile, float deck, boolean closes) {
         float gap = tile / 9f;
         float barGap = 2f * gap;
         // Each slab: its tiles, its padding and a gap between each two, and its 1 px edges.
-        float title = tile + tile * TITLE_REM / Tile.SIDE_REM + 3f * gap + 2f;
+        float title = tile * TITLE_REM / Tile.SIDE_REM + 2f * gap + 2f + (closes ? tile + gap : 0f);
         float tools = 4f * tile + 5f * gap + 2f;   // Turn, Background, Settings and Keep shown
         boolean sides = width >= 3f * tile;
         if (deck > 0f) {
@@ -941,7 +960,7 @@ public final class PictureViewer {
             return;
         }
         // Until the deck is first laid out it is taken to fit; its measure follows at once, and fits the bar again.
-        Fit f = fit(box.content().w(), tilePx, playing ? Math.max(deckPx, 1f) : 0f);
+        Fit f = fit(box.content().w(), tilePx, playing ? Math.max(deckPx, 1f) : 0f, closes);
         strip.fit(f.thumbnails());
         browse.visible(f.thumbnails() > 0);
         title.visible(f.title());
