@@ -406,6 +406,11 @@ public final class PictureViewer {
     /** Whether the pointer is on the seek bar, so the glance over it comes back with the bar. */
     private volatile boolean onSeek;
     private final AtomicInteger fade = new AtomicInteger();
+    /**
+     * The {@link #fade} the bar finished fading out at, or -1: the bar is out of sight while {@code fade} still holds
+     * it, and a reveal moves {@code fade} on, so a fade that lands after a reveal can never leave the bar marked out.
+     */
+    private volatile int fadedAt = -1;
     private Scheduled idle;
 
     /**
@@ -1561,16 +1566,26 @@ public final class PictureViewer {
             if (fade.get() == g) {
                 chrome.forEach(n -> n.opacity((float) (1.0 - p)));
             }
-        }, () -> { });
+        }, () -> fadedAt = g);
     }
 
     private void reveal() {
         fade.incrementAndGet();
         hidden = false;
+        // The clock and the seek bar stood still while out of sight: where the playing is now, before they show.
+        Playback p = image.playback();
+        if (p != null) {
+            showClock(p);
+        }
         chrome.forEach(n -> n.opacity(1f).hitInert(false));
         if (onSeek) {
             glance.hover(true);
         }
+    }
+
+    /** Whether the bar has faded all the way out, so nothing in it can be seen. */
+    private boolean faded() {
+        return fade.get() == fadedAt;
     }
 
     // ---------------------------------------------------------------- building
@@ -1615,13 +1630,24 @@ public final class PictureViewer {
             showDeck(now, p != null);
         }
         glance.playing(active ? p : null);
-        if (p == null) {
+        if (p == null || faded()) {
             return;
         }
+        showClock(p);
+    }
+
+    /**
+     * Move the seek bar and the clock to where {@code p} is, as one edit. Not while the bar is faded out: a frame of a
+     * video would write them for nobody to see, and {@link #reveal} writes them before they show again.
+     */
+    private void showClock(Playback p) {
         long d = p.duration();
         long at = Math.min(p.position(), d);
-        seek.show(d > 0 ? (float) at / d : 0f);
-        clock.text(readout(at, d, p.frame(), p.count(), p.failure()));
+        String text = readout(at, d, p.frame(), p.count(), p.failure());
+        gui.batch(() -> {
+            seek.show(d > 0 ? (float) at / d : 0f);
+            clock.text(text);
+        });
     }
 
     /** Write {@code now} to the transport: only when it has changed, which a frame of a video does not do. */
