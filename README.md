@@ -141,11 +141,9 @@ java ... tools/Ico.java ../Pix/src/main/rc/pix-background.svg ../Pix/src/main/rc
 ```
 
 Art shown larger than an icon goes past the `.ico`'s 256 px. `tools/Png.java` renders one SVG as a PNG at each side
-named, `{side}` in the output name standing for it; it uses `Ico`'s encoder, so it runs from `tools/` beside it. The
-framework's About window logo is made so, at 1x to 4x of its 96 px:
+named, `{side}` in the output name standing for it; it uses `Ico`'s encoder, so it runs from `tools/` beside it.
 
-```
-java ... tools/Png.java ../vexelray-framework/vexelray-framework-shell/src/main/rc/vexelray-logo.svg \
-     ../vexelray-framework/vexelray-framework-shell/src/main/resources/dev/vexelray/framework/shell/vexelray-logo-{side}.png \
-     96 192 288 384
-```
+The framework's About window no longer draws its marks from PNGs: each is an art pair (a distance field and its colour)
+that the build bakes from the SVG with `vexelray-gui-icons-maven-plugin`'s `pair` goal. The VexelRay mark's is configured
+in `vexelray-framework-shell`'s pom, from `src/main/rc/vexelray-logo.svg`, and an application's in its own pom, from the
+drawing its `.ico` is made from (see `vexelray-gui-icons`' README).
