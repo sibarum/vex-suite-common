@@ -6,7 +6,7 @@
 
     <groupId>dev.sibarum</groupId>
     <artifactId>vex-suite-common-parent</artifactId>
-    <version>0.1.2-SNAPSHOT</version>
+    <version>0.1.2</version>
     <packaging>pom</packaging>
 
     <name>vex-suite-common-parent</name>
@@ -33,12 +33,12 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <vexelray.version>0.1.2-SNAPSHOT</vexelray.version>
-        <vexelray-gui.version>0.1.2-SNAPSHOT</vexelray-gui.version>
-        <tactroller.version>1.2-SNAPSHOT</tactroller.version>
-        <atchung.version>1.2-SNAPSHOT</atchung.version>
-        <vexelray-codec.version>0.1.2-SNAPSHOT</vexelray-codec.version>
-        <supirvast.version>0.2.2-SNAPSHOT</supirvast.version>
+        <vexelray.version>0.1.2</vexelray.version>
+        <vexelray-gui.version>0.1.2</vexelray-gui.version>
+        <tactroller.version>1.2</tactroller.version>
+        <atchung.version>1.2</atchung.version>
+        <vexelray-codec.version>0.1.2</vexelray-codec.version>
+        <supirvast.version>0.2.2</supirvast.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
@@ -84,7 +84,7 @@
             <plugin>
                 <groupId>dev.vexelray.build</groupId>
                 <artifactId>vexelray-build-maven-plugin</artifactId>
-                <version>0.1.2-SNAPSHOT</version>
+                <version>0.1.2</version>
                 <executions>
                     <execution>
                         <id>isolate</id>

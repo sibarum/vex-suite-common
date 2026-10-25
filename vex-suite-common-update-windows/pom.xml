@@ -7,7 +7,7 @@
     <parent>
         <groupId>dev.sibarum</groupId>
         <artifactId>vex-suite-common-parent</artifactId>
-        <version>0.1.2-SNAPSHOT</version>
+        <version>0.1.2</version>
     </parent>
 
     <artifactId>vex-suite-common-update-windows</artifactId>
