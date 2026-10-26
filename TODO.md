@@ -27,10 +27,10 @@ by a fake `update.ps1` and opened again, and Pix, which had no update of its own
 standing in for an application that will not close got **Skip** and **Cancel**, and both did what they say. `WM_CLOSE`
 was seen to close the installed Calculator release exe. Still to confirm, with the next published versions:
 
-- **An application asking about unsaved changes.** Open Vex with an unsaved file and update from Pix: Vex should ask,
-  Pix should say Vex is still open after three seconds, **Show** should bring Vex to the front (Windows allows it only
-  while Pix is in the foreground, which it is when the button was just pressed), and answering Vex's question should
-  let the update go on. Cancelling Vex's question and then pressing **Skip** should update the rest.
+- **An application asking about unsaved changes.** Open VexelRay IDE with an unsaved file and update from Pix: VexelRay IDE should ask,
+  Pix should say VexelRay IDE is still open after three seconds, **Show** should bring VexelRay IDE to the front (Windows allows it only
+  while Pix is in the foreground, which it is when the button was just pressed), and answering VexelRay IDE's question should
+  let the update go on. Cancelling VexelRay IDE's question and then pressing **Skip** should update the rest.
 - **This application's own close refused.** With Pix being updated too, make its own close ask and say no: the others
   should still be updated and opened again, and Pix updated whenever it does close, up to fifteen minutes later.
 - **The first suite update comes from the old helper.** Pix and Vexplore 0.1.0 carry the single-application script, so

@@ -19,7 +19,7 @@ import java.util.function.BiConsumer;
 
 /**
  * A {@link Terminal} drawn on a node as a cell grid: what any window that shows a terminal shares, whatever feeds it.
- * MainFrame puts a shell behind one; Vex puts a build behind one and keeps it after the build has ended.
+ * MainFrame puts a shell behind one; VexelRay IDE puts a build behind one and keeps it after the build has ended.
  *
  * <p>This is the picture and the parts of the pointer that act on the picture alone: the cell grid fitted to the
  * node, scrolling back through the history (the wheel, {@link #page}), and selecting with a drag and copying it.

@@ -14,7 +14,7 @@ import dev.vexelray.gui.core.style.Theme;
  * An application's own look takes {@link #THEME} and adds the tokens only it uses.
  *
  * <p><b>Violet is "you chose this"</b> ({@code accent}, about 258 degrees): a chosen tile, focus, the one filled
- * button. Vex owns cyan in the suite, so the two windows are told apart at a glance.
+ * button. VexelRay IDE owns cyan in the suite, so the two windows are told apart at a glance.
  *
  * <h2>Where the ladder lands</h2>
  * The surface ladder starts at {@code bg-0} and steps 0.03 in Oklab lightness, which puts the framework's levels

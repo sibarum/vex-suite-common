@@ -2,10 +2,10 @@
 
 What the suite's applications share: for [Vexplore](../vexplore) and [Pix](../Pix), the sizes pictures are decoded
 at, the image viewer's tree and its parts, the palette they are drawn in, and git's view of a folder; for
-[MainFrame](../mainframe) and [Vex](../text-editor-vexel-demo), a terminal. A library, not an application; each app
+[MainFrame](../mainframe) and [VexelRay IDE](../text-editor-vexel-demo), a terminal. A library, not an application; each app
 depends on it, so a change here is a change to all of them.
 
-MainFrame and Vex use only `tty/` and exclude `vexelray-codec-image` from it, so neither carries the picture decoder.
+MainFrame and VexelRay IDE use only `tty/` and exclude `vexelray-codec-image` from it, so neither carries the picture decoder.
 
 ```
 mvn install        # build, test, and put it in the local Maven repository, before either app builds
