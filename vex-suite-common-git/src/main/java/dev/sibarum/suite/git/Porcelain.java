@@ -34,7 +34,8 @@ final class Porcelain {
     }
 
     static Status parse(Path root, byte[] out) {
-        String[] fields = new String(out, StandardCharsets.UTF_8).split("\0");
+        String text = new String(out, StandardCharsets.UTF_8);
+        String[] fields = text.split("\0");
         String oid = null;
         String head = null;
         String upstream = null;
@@ -93,7 +94,7 @@ final class Porcelain {
                 }
             }
         }
-        return new Status(root, new Status.Branch(head, oid, upstream, ahead, behind), changes);
+        return new Status(root, new Status.Branch(head, oid, upstream, ahead, behind), changes, text);
     }
 
     /** A tracked file's state from its two status letters: X for the index, Y for the working tree, '.' for none. */

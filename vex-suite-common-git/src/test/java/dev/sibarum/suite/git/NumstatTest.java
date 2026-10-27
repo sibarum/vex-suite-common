@@ -47,6 +47,18 @@ class NumstatTest {
     }
 
     @Test
+    void itsTextReadsBackAndAnUntrackedFilesRecordJoinsIt() {
+        Numstat git = parse("4\t1\ta.txt\0" + "2\t1\t\0old.txt\0new.txt\0");
+        String joined = git.text() + Numstat.record("untracked.txt", new Numstat.Lines(9, 0, false))
+                + Numstat.record("p.png", Numstat.BINARY);
+        Numstat all = Numstat.parse(joined);
+        assertEquals(new Numstat.Lines(4, 1, false), all.at("a.txt"));
+        assertEquals(new Numstat.Lines(2, 1, false), all.at("new.txt"));
+        assertEquals(new Numstat.Lines(9, 0, false), all.at("untracked.txt"));
+        assertEquals(Numstat.BINARY, all.at("p.png"));
+    }
+
+    @Test
     void anUntrackedFileCountsItsOwnLines() throws IOException {
         Path f = Files.writeString(dir.resolve("a.txt"), "one\ntwo\nthree");
         assertEquals(new Numstat.Lines(3, 0, false), Numstat.count(f));

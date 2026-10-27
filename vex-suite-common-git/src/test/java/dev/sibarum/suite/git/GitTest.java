@@ -92,6 +92,14 @@ class GitTest {
     }
 
     @Test
+    void knowsWhereTheRepositoryKeepsItsIndex() throws IOException {
+        Path gitDir = git.gitDir(repo.resolve("sub")).orElseThrow();
+        assertTrue(Files.isRegularFile(gitDir.resolve("index")), gitDir.toString());
+        assertTrue(Files.isRegularFile(gitDir.resolve("HEAD")));
+        assertFalse(git.gitDir(Files.createDirectories(dir.resolve("plain"))).isPresent());
+    }
+
+    @Test
     void aRunKeepsWhatItAskedAndWhatCameBack() throws IOException {
         Git.Result r = git.run(repo, List.of("rev-parse", "--abbrev-ref", "HEAD"));
         assertTrue(r.ok());

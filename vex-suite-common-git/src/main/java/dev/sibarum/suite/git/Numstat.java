@@ -30,6 +30,7 @@ public final class Numstat {
     private static final int SNIFF = 8000;
 
     private final Map<String, Lines> byPath;
+    private final String text;
 
     /**
      * @param added   lines added
@@ -39,8 +40,30 @@ public final class Numstat {
     public record Lines(int added, int removed, boolean binary) {
     }
 
-    private Numstat(Map<String, Lines> byPath) {
+    private Numstat(Map<String, Lines> byPath, String text) {
         this.byPath = Map.copyOf(byPath);
+        this.text = text;
+    }
+
+    /**
+     * What git wrote, which {@link #parse} reads back to this: a list of counts cannot cross between the parts of an
+     * application, and its text can. Records made by {@link #record} may be added to it, for untracked files.
+     */
+    public String text() {
+        return text;
+    }
+
+    /** Read counts from their {@link #text}, or from several such texts joined. */
+    public static Numstat parse(String text) {
+        return parse(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * One path's counts as git would write them, NUL and all: for an untracked file counted by {@link #count}, so that
+     * its counts can travel with git's own.
+     */
+    public static String record(String path, Lines lines) {
+        return lines.binary() ? "-\t-\t" + path + "\0" : lines.added() + "\t" + lines.removed() + "\t" + path + "\0";
     }
 
     /** The counts for a path as git writes it, relative to the root and {@code /}-separated; null if it has none. */
@@ -55,11 +78,12 @@ public final class Numstat {
 
     /** Nothing counted: outside a repository, or nothing changed. */
     public static Numstat none() {
-        return new Numstat(Map.of());
+        return new Numstat(Map.of(), "");
     }
 
     static Numstat parse(byte[] out) {
-        String[] fields = new String(out, StandardCharsets.UTF_8).split("\0");
+        String text = new String(out, StandardCharsets.UTF_8);
+        String[] fields = text.split("\0");
         Map<String, Lines> lines = new HashMap<>();
         for (int i = 0; i < fields.length; i++) {
             String[] r = fields[i].split("\t", 3);
@@ -78,7 +102,7 @@ public final class Numstat {
             boolean binary = r[0].equals("-") || r[1].equals("-");
             lines.put(path, binary ? BINARY : new Lines(count(r[0]), count(r[1]), false));
         }
-        return new Numstat(lines);
+        return new Numstat(lines, text);
     }
 
     /**

@@ -144,4 +144,15 @@ class PorcelainTest {
         Status s = parse("# branch.head main", "z something new", "? a.txt");
         assertEquals(1, s.changes().size());
     }
+
+    @Test
+    void itsTextReadsBackToTheSameStatus() {
+        Status s = parse("# branch.head main", "# branch.ab +1 -0",
+                "2 R. N... " + HASHES + "R100 b.txt", "a.txt", "1 MM N... " + HASHES + "c d.txt", "? new.txt");
+        Status again = Status.parse(ROOT, s.text());
+        assertEquals(s.changes(), again.changes());
+        assertEquals(s.branch(), again.branch());
+        assertEquals(s.text(), again.text());
+        assertEquals("", new Status(ROOT, s.branch(), s.changes()).text());
+    }
 }

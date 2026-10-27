@@ -20,6 +20,7 @@ public final class Status {
     private final Path root;
     private final Branch branch;
     private final List<Change> changes;
+    private final String text;
     private final Map<String, Change> byPath = new HashMap<>();
 
     /** What one path is, compared with the last commit. Ordered by how much it wants to be seen, most first. */
@@ -139,12 +140,30 @@ public final class Status {
      *                is untracked or ignored as a whole is one entry ending in {@code /}
      */
     public Status(Path root, Branch branch, List<Change> changes) {
+        this(root, branch, changes, "");
+    }
+
+    Status(Path root, Branch branch, List<Change> changes, String text) {
         this.root = root;
         this.branch = branch;
         this.changes = List.copyOf(changes);
+        this.text = text;
         for (Change c : this.changes) {
             byPath.put(fold(c.path()), c);
         }
+    }
+
+    /**
+     * Read a status from its {@link #text}: what another part of an application was handed instead of this, since a
+     * status is a list and a list cannot cross between parts as itself, but its text can.
+     */
+    public static Status parse(Path root, String text) {
+        return Porcelain.parse(root, text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /** What git wrote, which {@link #parse} reads back to this; empty for a status not read from git. */
+    public String text() {
+        return text;
     }
 
     /**

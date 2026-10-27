@@ -33,12 +33,14 @@ git/                the git executable, run as a process. No GUI; module vex-sui
   Git               runs git with pipes, never taking a lock or prompting; a run is a Result (command, exit,
                     output) kept whole for whatever shows the user what git did. A run may be given standard input
                     (a commit's message) and a longer timeout. No git installed is not an error: every query answers
-                    nothing, as it does outside a repository. Queries: status, numstat, diff, log, branches.
+                    nothing, as it does outside a repository. Queries: status, numstat, diff, log, branches, gitDir.
   Status            a working tree's state: the branch, every path that is not clean, and the two questions a file
                     list asks of it, at(file) and inside(folder). Case-blind where the platform is. Each Change keeps
-                    git's two letters, so a commit view can list it as staged(), unstaged() or both.
+                    git's two letters, so a commit view can list it as staged(), unstaged() or both. Its text is
+                    kept, and parse() reads it back: how a status crosses between an application's parts.
   Porcelain         reads `git status --porcelain=v2 -z --branch`. Pure, so it is tested without git.
-  Numstat           lines added and removed per path, from `git diff --numstat -z`; count(file) for an untracked one.
+  Numstat           lines added and removed per path, from `git diff --numstat -z`; count(file) for an untracked one,
+                    and record() to write its count in git's form beside git's own. Its text crosses as Status's does.
   Diff              one file's diff in hunks and numbered lines. Its text is kept, so it crosses to another part of an
                     application as one string and parse() reads it there. An untracked file's is made here, not by git.
   Log, Commit       reads `git log -z` in one format: hash, author, time, the refs at it, subject.

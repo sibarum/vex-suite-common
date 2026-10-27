@@ -159,6 +159,20 @@ public final class Git {
     }
 
     /**
+     * The repository's own directory, as an absolute path: {@code .git} for a plain checkout, the worktree's own under
+     * {@code .git/worktrees} for a linked one. Where {@code index} and {@code HEAD} are, so where a change made by git
+     * itself can be seen without running it. Empty outside a repository, or if git failed.
+     */
+    public Optional<Path> gitDir(Path folder) {
+        try {
+            Result r = run(folder, List.of("rev-parse", "--absolute-git-dir"));
+            return r.ok() ? Optional.of(Path.of(r.text().strip())) : Optional.empty();
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
      * Lines added and removed per tracked path: what is not staged, or with {@code staged} what is. Untracked files
      * are not in it; {@link Numstat#count} counts one. Nothing, rather than an error, if git failed.
      *
