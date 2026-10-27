@@ -4,8 +4,10 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -59,6 +61,38 @@ class PorcelainTest {
         assertEquals(Status.State.CONFLICTED, s.at(ROOT.resolve("src/conflict.txt")));
         assertEquals(Status.State.UNTRACKED, s.at(ROOT.resolve("src/new.txt")));
         assertNull(s.at(ROOT.resolve("src/clean.txt")));
+    }
+
+    @Test
+    void theTwoLettersAreKeptAndSayWhichSideAPathIsOn() {
+        Status s = parse(
+                "1 .M N... " + HASHES + "modified.txt",
+                "1 M. N... " + HASHES + "staged.txt",
+                "1 MM N... " + HASHES + "both.txt",
+                "1 AD N... " + HASHES + "added-then-deleted.txt",
+                "u UU N... 100644 100644 100644 100644 h1 h2 h3 conflict.txt",
+                "? new.txt",
+                "! target/");
+        Status.Change both = s.changes().get(2);
+        assertEquals('M', both.index());
+        assertEquals('M', both.tree());
+        Status.Change gone = s.changes().get(3);
+        assertEquals('A', gone.index());
+        assertEquals('D', gone.tree());
+        assertEquals(List.of("staged.txt", "both.txt", "added-then-deleted.txt"),
+                s.staged().stream().map(Status.Change::path).toList());
+        assertEquals(List.of("modified.txt", "both.txt", "added-then-deleted.txt", "conflict.txt", "new.txt"),
+                s.unstaged().stream().map(Status.Change::path).toList());
+    }
+
+    @Test
+    void aChangeMadeFromItsStateAloneHasLettersToMatch() {
+        Status.Change c = new Status.Change("a.txt", null, Status.State.STAGED_AND_MODIFIED);
+        assertTrue(c.staged());
+        assertTrue(c.unstaged());
+        Status.Change ignored = new Status.Change("out/", null, Status.State.IGNORED);
+        assertFalse(ignored.staged());
+        assertFalse(ignored.unstaged());
     }
 
     @Test

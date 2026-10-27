@@ -41,11 +41,59 @@ public final class Status {
     }
 
     /**
+     * One path that is not clean.
+     *
+     * <p>{@code state} is the one word a file list shows. {@code index} and {@code tree} are git's own two letters, kept
+     * because a commit view lists a path once for each side it has changed on: a file staged and then changed again is
+     * in both Staged and Unstaged. {@code '.'} is no change on that side; an untracked path is {@code ??}, an ignored
+     * one {@code !!}, a conflicted one the letters of its conflict ({@code UU}, {@code AA}…).
+     *
      * @param path  relative to the root, {@code /}-separated; ends in {@code /} for a whole directory
      * @param from  for a rename, the path it was renamed from; otherwise null
      * @param state what it is
+     * @param index what was done to it in the index, compared with {@code HEAD}: git's X
+     * @param tree  what was done to it in the working tree, compared with the index: git's Y
      */
-    public record Change(String path, String from, State state) {
+    public record Change(String path, String from, State state, char index, char tree) {
+
+        /** A change known only by its state; the two letters are the plainest ones that state could have come from. */
+        public Change(String path, String from, State state) {
+            this(path, from, state, indexOf(state), treeOf(state));
+        }
+
+        /** Whether it has something staged: a commit now would take it. A conflict is not staged until resolved. */
+        public boolean staged() {
+            return state != State.CONFLICTED && index != '.' && index != '?' && index != '!';
+        }
+
+        /**
+         * Whether it has something not staged: changed on disk since it was staged, untracked, or conflicted. Ignored
+         * paths are neither.
+         */
+        public boolean unstaged() {
+            return state == State.CONFLICTED || (tree != '.' && tree != '!');
+        }
+
+        private static char indexOf(State state) {
+            return switch (state) {
+                case CONFLICTED -> 'U';
+                case STAGED_AND_MODIFIED, STAGED -> 'M';
+                case MODIFIED -> '.';
+                case ADDED -> 'A';
+                case UNTRACKED -> '?';
+                case IGNORED -> '!';
+            };
+        }
+
+        private static char treeOf(State state) {
+            return switch (state) {
+                case CONFLICTED -> 'U';
+                case STAGED_AND_MODIFIED, MODIFIED -> 'M';
+                case STAGED, ADDED -> '.';
+                case UNTRACKED -> '?';
+                case IGNORED -> '!';
+            };
+        }
     }
 
     /**
@@ -120,6 +168,16 @@ public final class Status {
 
     public List<Change> changes() {
         return changes;
+    }
+
+    /** What a commit now would take, in git's order. */
+    public List<Change> staged() {
+        return changes.stream().filter(Change::staged).toList();
+    }
+
+    /** What is changed and not staged, untracked or conflicted, in git's order. Ignored paths are left out. */
+    public List<Change> unstaged() {
+        return changes.stream().filter(Change::unstaged).toList();
     }
 
     /**

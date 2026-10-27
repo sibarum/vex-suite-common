@@ -83,11 +83,12 @@ final class Porcelain {
                 case 'u' -> {
                     String[] r = f.split(" ", 11);
                     if (r.length == 11) {
-                        changes.add(new Status.Change(r[10], null, Status.State.CONFLICTED));
+                        changes.add(new Status.Change(r[10], null, Status.State.CONFLICTED,
+                                r[1].charAt(0), r[1].length() > 1 ? r[1].charAt(1) : '.'));
                     }
                 }
-                case '?' -> changes.add(new Status.Change(f.substring(2), null, Status.State.UNTRACKED));
-                case '!' -> changes.add(new Status.Change(f.substring(2), null, Status.State.IGNORED));
+                case '?' -> changes.add(new Status.Change(f.substring(2), null, Status.State.UNTRACKED, '?', '?'));
+                case '!' -> changes.add(new Status.Change(f.substring(2), null, Status.State.IGNORED, '!', '!'));
                 default -> {
                 }
             }
@@ -109,7 +110,7 @@ final class Porcelain {
         } else {
             state = Status.State.MODIFIED;
         }
-        return new Status.Change(path, from, state);
+        return new Status.Change(path, from, state, x, y);
     }
 
     private static int count(String signed) {

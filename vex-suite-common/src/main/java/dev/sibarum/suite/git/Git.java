@@ -2,6 +2,7 @@ package dev.sibarum.suite.git;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -70,6 +71,16 @@ public final class Git {
      * {@code dir} is not a directory. A git that ran and failed is a {@link Result} with a non-zero exit.
      */
     public Result run(Path dir, List<String> args) throws IOException {
+        return run(dir, args, null, TIMEOUT);
+    }
+
+    /**
+     * Run {@code git args…} in {@code dir} with {@code stdin} written to its standard input, and killed after
+     * {@code timeout}. For a commit's message on {@code -F -}, which then never passes through the platform's quoting
+     * of arguments, and for what may take longer than {@link #TIMEOUT}: a commit's hooks, a push. A null
+     * {@code stdin} is an empty one.
+     */
+    public Result run(Path dir, List<String> args, String stdin, Duration timeout) throws IOException {
         List<String> command = new ArrayList<>(args.size() + 1);
         command.add(executable);
         command.addAll(args);
@@ -78,13 +89,22 @@ public final class Git {
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
         long start = System.nanoTime();
         Process p = pb.start();
-        p.getOutputStream().close();
+        // Written from a thread of its own, as the pipes are drained: git may fill stdout before it reads its input.
+        Thread input = Thread.ofVirtual().start(() -> {
+            try (OutputStream in = p.getOutputStream()) {
+                if (stdin != null) {
+                    in.write(stdin.getBytes(StandardCharsets.UTF_8));
+                }
+            } catch (IOException e) {
+                // git stopped reading, or never started to; what it did is in its exit and its stderr
+            }
+        });
         // Both pipes are drained at once: a process whose stderr fills its pipe stops writing stdout, and waits.
         StringBuilder err = new StringBuilder();
         Thread errors = Thread.ofVirtual().start(() -> err.append(drain(p.getErrorStream())));
         Thread watchdog = Thread.ofVirtual().start(() -> {
             try {
-                if (!p.waitFor(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                     p.destroyForcibly();
                 }
             } catch (InterruptedException e) {
@@ -97,12 +117,13 @@ public final class Git {
         }
         int exit;
         try {
-            boolean done = p.waitFor(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            boolean done = p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!done) {
                 p.destroyForcibly();
             }
             exit = done ? p.exitValue() : -1;
             errors.join();
+            input.join();
         } catch (InterruptedException e) {
             p.destroyForcibly();
             Thread.currentThread().interrupt();
@@ -134,6 +155,83 @@ public final class Git {
             return Optional.of(Porcelain.parse(root, st.out()));
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Lines added and removed per tracked path: what is not staged, or with {@code staged} what is. Untracked files
+     * are not in it; {@link Numstat#count} counts one. Nothing, rather than an error, if git failed.
+     *
+     * @param root the repository's top directory, {@link Status#root}
+     */
+    public Numstat numstat(Path root, boolean staged) {
+        List<String> args = new ArrayList<>(List.of("diff", "--numstat", "-z", "--no-color", "--no-ext-diff",
+                "--no-textconv"));
+        if (staged) {
+            args.add("--cached");
+        }
+        try {
+            Result r = run(root, args);
+            return r.ok() ? Numstat.parse(r.out()) : Numstat.none();
+        } catch (IOException | RuntimeException e) {
+            return Numstat.none();
+        }
+    }
+
+    /**
+     * One file's diff: not staged, staged, or the whole of an untracked file. {@link Diff#none()} if there is no
+     * difference or git failed. Only git's own diff is asked for, whatever the user's config says: no colour, no
+     * external diff tool, no text conversion, so what comes back is what {@link Diff#parse} reads.
+     *
+     * @param root the repository's top directory, {@link Status#root}
+     * @param path the file, as {@link Status.Change#path} has it
+     */
+    public Diff diff(Path root, String path, Diff.Side side) {
+        if (side == Diff.Side.UNTRACKED) {
+            // Git has nothing to compare an untracked file with, so it is read here: all of it, as added.
+            return Diff.untracked(root.resolve(path));
+        }
+        List<String> args = new ArrayList<>(List.of("diff", "--no-color", "--no-ext-diff", "--no-textconv"));
+        if (side == Diff.Side.STAGED) {
+            args.add("--cached");
+        }
+        args.addAll(List.of("--", path));
+        try {
+            Result r = run(root, args);
+            return r.ok() ? Diff.parse(r.text()) : Diff.none();
+        } catch (IOException | RuntimeException e) {
+            return Diff.none();
+        }
+    }
+
+    /**
+     * The newest {@code count} commits reachable from {@code ref}, newest first; from {@code HEAD} if {@code ref} is
+     * null. Empty before the first commit, for a ref that does not exist, or if git failed.
+     *
+     * @param root the repository's top directory, {@link Status#root}
+     */
+    public List<Commit> log(Path root, String ref, int count) {
+        try {
+            Result r = run(root, List.of("-c", "log.showSignature=false", "log", "-z", "--no-color",
+                    "--format=" + Log.FORMAT, "-n", Integer.toString(count), ref == null ? "HEAD" : ref, "--"));
+            return r.ok() ? Log.parse(r.out()) : List.of();
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * Every local branch and every remote-tracking one, local first, each in name order. Empty before the first
+     * commit, or if git failed.
+     *
+     * @param root the repository's top directory, {@link Status#root}
+     */
+    public List<Ref> branches(Path root) {
+        try {
+            Result r = run(root, List.of("for-each-ref", "--format=" + Refs.FORMAT, "refs/heads", "refs/remotes"));
+            return r.ok() ? Refs.parse(r.out()) : List.of();
+        } catch (IOException | RuntimeException e) {
+            return List.of();
         }
     }
 

@@ -26,11 +26,18 @@ pictures/
 
 git/                the git executable, run as a process. No GUI. Blocking: callers run these on Gui.offload().
   Git               runs git with pipes, never taking a lock or prompting; a run is a Result (command, exit,
-                    output) kept whole for whatever shows the user what git did. No git installed is not an error:
-                    status() is empty, as it is outside a repository.
+                    output) kept whole for whatever shows the user what git did. A run may be given standard input
+                    (a commit's message) and a longer timeout. No git installed is not an error: every query answers
+                    nothing, as it does outside a repository. Queries: status, numstat, diff, log, branches.
   Status            a working tree's state: the branch, every path that is not clean, and the two questions a file
-                    list asks of it, at(file) and inside(folder). Case-blind where the platform is.
+                    list asks of it, at(file) and inside(folder). Case-blind where the platform is. Each Change keeps
+                    git's two letters, so a commit view can list it as staged(), unstaged() or both.
   Porcelain         reads `git status --porcelain=v2 -z --branch`. Pure, so it is tested without git.
+  Numstat           lines added and removed per path, from `git diff --numstat -z`; count(file) for an untracked one.
+  Diff              one file's diff in hunks and numbered lines. Its text is kept, so it crosses to another part of an
+                    application as one string and parse() reads it there. An untracked file's is made here, not by git.
+  Log, Commit       reads `git log -z` in one format: hash, author, time, the refs at it, subject.
+  Refs, Ref         reads `git for-each-ref` over local and remote branches, with upstream and ahead/behind.
 
 update/             updating the installed suite from inside one of its applications, through vexelray-installer.
                     No GUI. Blocking.

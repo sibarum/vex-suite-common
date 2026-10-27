@@ -99,6 +99,81 @@ class GitTest {
         assertEquals(List.of("git", "rev-parse", "--abbrev-ref", "HEAD"), r.command());
     }
 
+    @Test
+    void aStagedFileIsListedOnceForEachSideItChangedOn() throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), "changed\n");
+        git("add", "sub/a.txt");
+        Files.writeString(repo.resolve("sub/a.txt"), "changed again\n");
+        Files.writeString(repo.resolve("new.txt"), "n\n");
+        Status s = git.status(repo).orElseThrow();
+        assertEquals(List.of("sub/a.txt"), s.staged().stream().map(Status.Change::path).toList());
+        assertEquals(List.of("sub/a.txt", "new.txt"), s.unstaged().stream().map(Status.Change::path).toList());
+    }
+
+    @Test
+    void countsLinesOnEachSide() throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), "b\nc\n");
+        git("add", "sub/a.txt");
+        Files.writeString(repo.resolve("sub/a.txt"), "b\nc\nd\n");
+        assertEquals(new Numstat.Lines(2, 1, false), git.numstat(repo, true).at("sub/a.txt"));
+        assertEquals(new Numstat.Lines(1, 0, false), git.numstat(repo, false).at("sub/a.txt"));
+    }
+
+    @Test
+    void diffsEachSideAndAnUntrackedFile() throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), "b\n");
+        git("add", "sub/a.txt");
+        Files.writeString(repo.resolve("sub/a.txt"), "b\nc\n");
+        Files.writeString(repo.resolve("sub/new file.txt"), "one\ntwo\n");
+
+        Diff staged = git.diff(repo, "sub/a.txt", Diff.Side.STAGED);
+        assertEquals(List.of(new Diff.Line(1, 0, Diff.Kind.REMOVED, "a"), new Diff.Line(0, 1, Diff.Kind.ADDED, "b")),
+                staged.hunks().get(0).lines());
+
+        Diff unstaged = git.diff(repo, "sub/a.txt", Diff.Side.UNSTAGED);
+        assertEquals(1, unstaged.added());
+        assertEquals(0, unstaged.removed());
+
+        Diff untracked = git.diff(repo, "sub/new file.txt", Diff.Side.UNTRACKED);
+        assertEquals(List.of(new Diff.Line(0, 1, Diff.Kind.ADDED, "one"), new Diff.Line(0, 2, Diff.Kind.ADDED, "two")),
+                untracked.hunks().get(0).lines());
+
+        assertTrue(git.diff(repo, ".gitignore", Diff.Side.UNSTAGED).hunks().isEmpty());
+    }
+
+    @Test
+    void aCommitMessageGoesInOnStandardInputLinesAndAll() throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), "changed\n");
+        git("add", "sub/a.txt");
+        Git.Result r = git.run(repo, List.of("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-F", "-"),
+                "Change a, \"quoted\"\n\nA second paragraph.\n", Git.TIMEOUT);
+        assertTrue(r.ok(), r.err());
+        List<Commit> log = git.log(repo, null, 10);
+        assertEquals(2, log.size());
+        assertEquals("Change a, \"quoted\"", log.get(0).subject());
+        assertEquals(List.of("HEAD", "main"), log.get(0).refs());
+        assertEquals("init", log.get(1).subject());
+        assertEquals("t", log.get(1).author());
+        assertEquals(1, git.log(repo, null, 1).size());
+    }
+
+    @Test
+    void listsBranchesAndWhichIsCheckedOut() throws IOException {
+        git("branch", "feature");
+        List<Ref> refs = git.branches(repo);
+        assertEquals(List.of("feature", "main"), refs.stream().map(Ref::name).toList());
+        assertTrue(refs.get(1).head());
+        assertFalse(refs.get(0).head());
+    }
+
+    @Test
+    void beforeTheFirstCommitThereIsNoHistoryAndNoError() throws IOException {
+        Path fresh = Files.createDirectories(dir.resolve("fresh"));
+        git.run(fresh, List.of("init", "-q", "-b", "main", "."));
+        assertEquals(List.of(), git.log(fresh, null, 10));
+        assertEquals(List.of(), git.branches(fresh));
+    }
+
     private void git(String... args) throws IOException {
         Git.Result r = git.run(repo, List.of(args));
         assumeTrue(r.ok(), () -> "git " + String.join(" ", args) + " failed: " + r.err());
