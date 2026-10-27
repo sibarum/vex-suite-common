@@ -249,6 +249,50 @@ public final class Git {
         }
     }
 
+    // ------------------------------------------------------------------ writes
+
+    /**
+     * Stage {@code paths}, relative to {@code dir}, as they are on the disk: changed, new, or gone ({@code add -A}, so a
+     * deletion is staged too). {@code "."} is everything under {@code dir}. The whole {@link Result}, for whatever
+     * shows the user what git did; a git that could not be started is one with exit -1 and the reason as its error.
+     */
+    public Result stage(Path dir, List<String> paths) {
+        List<String> args = new ArrayList<>(List.of("add", "-A", "--"));
+        args.addAll(paths);
+        return write(dir, args);
+    }
+
+    /**
+     * Take {@code paths}, relative to {@code dir}, out of what is staged, leaving the working tree as it is:
+     * {@code restore --staged}, or before the first commit, when there is nothing to restore from,
+     * {@code rm --cached}, which is the same thing then.
+     */
+    public Result unstage(Path dir, List<String> paths) {
+        boolean born;
+        try {
+            born = run(dir, List.of("rev-parse", "--verify", "--quiet", "HEAD")).ok();
+        } catch (IOException | RuntimeException e) {
+            born = true;   // the write below fails the same way, and says why
+        }
+        List<String> args = new ArrayList<>(born ? List.of("restore", "--staged", "--")
+                : List.of("rm", "-r", "-q", "--cached", "--"));
+        args.addAll(paths);
+        return write(dir, args);
+    }
+
+    /** A write, as a {@link Result} either way: one that could not start is exit -1 with the reason as its error. */
+    private Result write(Path dir, List<String> args) {
+        try {
+            return run(dir, args);
+        } catch (IOException | RuntimeException e) {
+            List<String> command = new ArrayList<>(args.size() + 1);
+            command.add(executable);
+            command.addAll(args);
+            return new Result(List.copyOf(command), dir, -1, new byte[0], String.valueOf(e.getMessage()),
+                    Duration.ZERO);
+        }
+    }
+
     private static String drain(InputStream in) {
         try (in) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);

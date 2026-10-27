@@ -100,6 +100,57 @@ class GitTest {
     }
 
     @Test
+    void stagesAndUnstagesAChangeANewFileAndADeletion() throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), "changed\n");
+        Files.writeString(repo.resolve("new.txt"), "n\n");
+        Files.delete(repo.resolve(".gitignore"));
+        assertTrue(git.stage(repo, List.of("sub/a.txt", "new.txt", ".gitignore")).ok());
+        Status s = git.status(repo).orElseThrow();
+        assertEquals(List.of(".gitignore", "new.txt", "sub/a.txt"),
+                s.staged().stream().map(Status.Change::path).sorted().toList());
+
+        Git.Result back = git.unstage(repo, List.of("sub/a.txt", "new.txt", ".gitignore"));
+        assertTrue(back.ok(), back.err());
+        s = git.status(repo).orElseThrow();
+        assertEquals(List.of(), s.staged());
+        assertEquals(Status.State.MODIFIED, s.at(repo.resolve("sub/a.txt")));
+        assertEquals("changed\n", Files.readString(repo.resolve("sub/a.txt")), "the working tree is left alone");
+    }
+
+    @Test
+    void everythingUnderAFolderIsStagedByItsDot() throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), "changed\n");
+        Files.writeString(repo.resolve("sub/b.txt"), "new\n");
+        Files.writeString(repo.resolve("outside.txt"), "not this\n");
+        assertTrue(git.stage(repo.resolve("sub"), List.of(".")).ok());
+        Status s = git.status(repo).orElseThrow();
+        assertEquals(List.of("sub/a.txt", "sub/b.txt"), s.staged().stream().map(Status.Change::path).sorted().toList());
+        assertEquals(Status.State.UNTRACKED, s.at(repo.resolve("outside.txt")));
+        assertTrue(git.unstage(repo.resolve("sub"), List.of(".")).ok());
+        assertEquals(List.of(), git.status(repo).orElseThrow().staged());
+    }
+
+    @Test
+    void beforeTheFirstCommitUnstagingTakesTheFileOutOfTheIndex() throws IOException {
+        Path fresh = Files.createDirectories(dir.resolve("fresh"));
+        git.run(fresh, List.of("init", "-q", "-b", "main", "."));
+        Files.writeString(fresh.resolve("a.txt"), "a\n");
+        assertTrue(git.stage(fresh, List.of("a.txt")).ok());
+        assertEquals(Status.State.ADDED, git.status(fresh).orElseThrow().at(fresh.resolve("a.txt")));
+        Git.Result r = git.unstage(fresh, List.of("a.txt"));
+        assertTrue(r.ok(), r.err());
+        assertEquals(Status.State.UNTRACKED, git.status(fresh).orElseThrow().at(fresh.resolve("a.txt")));
+    }
+
+    @Test
+    void aWriteThatCannotStartIsAFailedResultNotAnException() {
+        Git.Result r = new Git("no-such-git-executable").stage(repo, List.of("x"));
+        assertFalse(r.ok());
+        assertEquals(-1, r.exit());
+        assertFalse(r.err().isEmpty());
+    }
+
+    @Test
     void aRunKeepsWhatItAskedAndWhatCameBack() throws IOException {
         Git.Result r = git.run(repo, List.of("rev-parse", "--abbrev-ref", "HEAD"));
         assertTrue(r.ok());

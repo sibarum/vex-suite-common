@@ -34,6 +34,7 @@ git/                the git executable, run as a process. No GUI; module vex-sui
                     output) kept whole for whatever shows the user what git did. A run may be given standard input
                     (a commit's message) and a longer timeout. No git installed is not an error: every query answers
                     nothing, as it does outside a repository. Queries: status, numstat, diff, log, branches, gitDir.
+                    Writes: stage and unstage, each a whole Result; one that cannot start is exit -1, not a throw.
   Status            a working tree's state: the branch, every path that is not clean, and the two questions a file
                     list asks of it, at(file) and inside(folder). Case-blind where the platform is. Each Change keeps
                     git's two letters, so a commit view can list it as staged(), unstaged() or both. Its text is
