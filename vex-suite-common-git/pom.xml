@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.sibarum</groupId>
+        <artifactId>vex-suite-common-parent</artifactId>
+        <version>0.1.3-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vex-suite-common-git</artifactId>
+
+    <name>vex-suite-common-git</name>
+    <description>
+        The git executable, run as a process, and what it says read into records: a working tree's status, line
+        counts, diffs, history, branches. vex-suite-common brings it to the applications that take the whole library;
+        a module that must build against no widget (VexelRay IDE's -core) depends on this alone. Depends on nothing.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

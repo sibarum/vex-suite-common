@@ -88,6 +88,11 @@
             <groupId>dev.sibarum</groupId>
             <artifactId>vex-suite-common-update</artifactId>
         </dependency>
+        <!-- Git, run as a process; its own module so that it can be had without the widgets. -->
+        <dependency>
+            <groupId>dev.sibarum</groupId>
+            <artifactId>vex-suite-common-git</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>

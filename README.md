@@ -7,6 +7,10 @@ depends on it, so a change here is a change to all of them.
 
 MainFrame and VexelRay IDE use only `tty/` and exclude `vexelray-codec-image` from it, so neither carries the picture decoder.
 
+`git/` is a module of its own, `vex-suite-common-git`, which depends on nothing. `vex-suite-common` brings it, so an
+application that takes the library has it as before; VexelRay IDE's `-core`, which builds against no widget, depends on
+the git module alone.
+
 ```
 mvn install        # build, test, and put it in the local Maven repository, before either app builds
 ```
@@ -24,7 +28,8 @@ the `Textures` and binds them to the window. What is here is what is particular 
 pictures/
   Sizes             the two sizes the suite decodes at: a thumbnail's, and the viewer's from the same decode.
 
-git/                the git executable, run as a process. No GUI. Blocking: callers run these on Gui.offload().
+git/                the git executable, run as a process. No GUI; module vex-suite-common-git. Blocking: callers run
+                    these off the frame loop, on Gui.offload() or as a job.
   Git               runs git with pipes, never taking a lock or prompting; a run is a Result (command, exit,
                     output) kept whole for whatever shows the user what git did. A run may be given standard input
                     (a commit's message) and a longer timeout. No git installed is not an error: every query answers

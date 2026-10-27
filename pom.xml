@@ -25,6 +25,8 @@
         <!-- What updating needs from an OS, and its Windows half (the installer only installs on Windows). -->
         <module>vex-suite-common-update</module>
         <module>vex-suite-common-update-windows</module>
+        <!-- Git, run as a process. No widget, so a module that must build against none can take it alone. -->
+        <module>vex-suite-common-git</module>
         <!-- The library the applications depend on, under the artifactId they already name. -->
         <module>vex-suite-common</module>
     </modules>
@@ -67,6 +69,11 @@
             <dependency>
                 <groupId>dev.sibarum</groupId>
                 <artifactId>vex-suite-common-update-windows</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-git</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
