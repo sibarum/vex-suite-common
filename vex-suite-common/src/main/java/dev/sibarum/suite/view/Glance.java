@@ -169,7 +169,8 @@ final class Glance {
         Glimpses g;
         try {
             g = m.glimpses(SIDE);
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | RuntimeException | LinkageError | OutOfMemoryError e) {
+            // No preview over the seek bar: the video plays on without one.
             LOG.debug("no glimpses of {}: {}", m.stamp().path(), e.toString());
             return;
         }
