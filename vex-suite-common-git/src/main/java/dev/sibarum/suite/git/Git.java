@@ -280,10 +280,28 @@ public final class Git {
         return write(dir, args);
     }
 
-    /** A write, as a {@link Result} either way: one that could not start is exit -1 with the reason as its error. */
+    /**
+     * Commit what is staged, with {@code message} as it was typed: given on standard input ({@code -F -}), so a
+     * message of several lines never passes through the platform's quoting of arguments. Git's own cleanup applies,
+     * as at a prompt with {@code -F}: trailing spaces and blank lines at either end go, and nothing else. The
+     * repository's hooks run, so it may take up to {@link #COMMIT_TIMEOUT}; one that fails commits nothing, and what
+     * it printed is the {@link Result}'s.
+     */
+    public Result commit(Path dir, String message) {
+        return write(dir, List.of("commit", "-F", "-"), message, COMMIT_TIMEOUT);
+    }
+
+    /** How long a commit may take: its hooks may run a linter or the tests. */
+    public static final Duration COMMIT_TIMEOUT = Duration.ofMinutes(5);
+
     private Result write(Path dir, List<String> args) {
+        return write(dir, args, null, TIMEOUT);
+    }
+
+    /** A write, as a {@link Result} either way: one that could not start is exit -1 with the reason as its error. */
+    private Result write(Path dir, List<String> args, String stdin, Duration timeout) {
         try {
-            return run(dir, args);
+            return run(dir, args, stdin, timeout);
         } catch (IOException | RuntimeException e) {
             List<String> command = new ArrayList<>(args.size() + 1);
             command.add(executable);

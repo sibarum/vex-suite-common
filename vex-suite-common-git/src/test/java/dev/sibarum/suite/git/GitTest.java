@@ -217,6 +217,46 @@ class GitTest {
     }
 
     @Test
+    void commitsWhatIsStagedAndOnlyThat() throws IOException {
+        git("config", "user.email", "t@t");
+        git("config", "user.name", "t");
+        Files.writeString(repo.resolve("sub/a.txt"), "changed\n");
+        Files.writeString(repo.resolve("left.txt"), "not staged\n");
+        assertTrue(git.stage(repo, List.of("sub/a.txt")).ok());
+        Git.Result r = git.commit(repo, "Change a\n\nWhy it changed.\n");
+        assertTrue(r.ok(), r.err());
+        assertEquals("Change a", git.log(repo, null, 1).get(0).subject());
+        Status s = git.status(repo).orElseThrow();
+        assertEquals(List.of(), s.staged());
+        assertEquals(Status.State.UNTRACKED, s.at(repo.resolve("left.txt")));
+        assertEquals(List.of("git", "commit", "-F", "-"), r.command());
+    }
+
+    @Test
+    void aFailingHookCommitsNothingAndSaysWhy() throws IOException {
+        git("config", "user.email", "t@t");
+        git("config", "user.name", "t");
+        Path hook = repo.resolve(".git/hooks/pre-commit");
+        Files.writeString(hook, "#!/bin/sh\necho 'lint: a.txt is wrong' >&2\nexit 1\n");
+        hook.toFile().setExecutable(true);
+        Files.writeString(repo.resolve("sub/a.txt"), "changed\n");
+        assertTrue(git.stage(repo, List.of("sub/a.txt")).ok());
+        Git.Result r = git.commit(repo, "Change a");
+        assertFalse(r.ok());
+        assertTrue(r.err().contains("lint: a.txt is wrong"), r.err());
+        assertEquals("init", git.log(repo, null, 1).get(0).subject());
+        assertEquals(List.of("sub/a.txt"),
+                git.status(repo).orElseThrow().staged().stream().map(Status.Change::path).toList());
+    }
+
+    @Test
+    void nothingStagedIsAFailedCommit() throws IOException {
+        git("config", "user.email", "t@t");
+        git("config", "user.name", "t");
+        assertFalse(git.commit(repo, "Nothing").ok());
+    }
+
+    @Test
     void listsBranchesAndWhichIsCheckedOut() throws IOException {
         git("branch", "feature");
         List<Ref> refs = git.branches(repo);
