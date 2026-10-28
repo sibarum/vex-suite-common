@@ -12,8 +12,11 @@ import java.util.List;
  * short hash, the upstream's short name, how it stands against the upstream ({@code ahead 2, behind 1}, {@code gone},
  * or nothing), and {@code *} if it is checked out. A remote's {@code HEAD}, {@code origin/HEAD}, names another branch
  * rather than being one, and is left out. A line this does not recognise is skipped.
+ *
+ * <p>As with {@link Log}, a list crosses between the parts of an application as its {@link #text}, and
+ * {@link #parse(String)} reads it there.
  */
-final class Refs {
+public final class Refs {
 
     /** The {@code --format} that {@link #parse} reads. */
     static final String FORMAT =
@@ -22,6 +25,33 @@ final class Refs {
     private static final String SEP = "\u001f";
 
     private Refs() {
+    }
+
+    /** Branches as git wrote them in {@link #FORMAT}, which {@link #parse(String)} reads back to the same branches. */
+    public static String text(List<Ref> refs) {
+        StringBuilder s = new StringBuilder();
+        for (Ref r : refs) {
+            List<String> track = new ArrayList<>();
+            if (r.gone()) {
+                track.add("gone");
+            }
+            if (r.ahead() > 0) {
+                track.add("ahead " + r.ahead());
+            }
+            if (r.behind() > 0) {
+                track.add("behind " + r.behind());
+            }
+            s.append(r.remote() ? "refs/remotes/" : "refs/heads/").append(r.name()).append(SEP)
+                    .append(r.name()).append(SEP).append(r.oid()).append(SEP)
+                    .append(r.upstream() == null ? "" : r.upstream()).append(SEP)
+                    .append(String.join(", ", track)).append(SEP).append(r.head() ? "*" : " ").append('\n');
+        }
+        return s.toString();
+    }
+
+    /** Read branches from their {@link #text}. */
+    public static List<Ref> parse(String text) {
+        return parse(text.getBytes(StandardCharsets.UTF_8));
     }
 
     static List<Ref> parse(byte[] out) {

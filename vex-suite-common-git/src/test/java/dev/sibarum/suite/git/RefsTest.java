@@ -36,6 +36,16 @@ class RefsTest {
     }
 
     @Test
+    void branchesCrossAsTheirTextAndComeBackTheSame() {
+        List<Ref> refs = List.of(
+                new Ref("main", false, true, "a41c9e2", "origin/main", 2, 1, false),
+                new Ref("old", false, false, "1234567", "origin/old", 0, 0, true),
+                new Ref("feature/x", false, false, "08aa6f1", null, 0, 0, false),
+                new Ref("origin/main", true, false, "e02f5a8", null, 0, 0, false));
+        assertEquals(refs, Refs.parse(Refs.text(refs)));
+    }
+
+    @Test
     void anUpstreamThatWentAwayIsGone() {
         Ref r = parse(line("refs/heads/old", "old", "1234567", "origin/old", "gone", " ")).get(0);
         assertEquals(true, r.gone());

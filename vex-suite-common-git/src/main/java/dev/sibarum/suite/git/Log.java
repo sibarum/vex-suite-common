@@ -12,8 +12,11 @@ import java.util.List;
  * <p>Each commit is one NUL-terminated record of six fields separated by the unit separator, {@code 0x1F}, which no
  * name or subject has in it: full hash, short hash, author, author time in seconds, the refs at it ({@code %D}), and
  * the subject. A record this does not recognise is skipped.
+ *
+ * <p>A list of commits cannot cross between the parts of an application, and its text can: {@link #text} writes a
+ * history back in the same format, and {@link #parse(String)} reads it on the other side.
  */
-final class Log {
+public final class Log {
 
     /** The {@code --format} that {@link #parse} reads. */
     static final String FORMAT = "%H%x1f%h%x1f%an%x1f%at%x1f%D%x1f%s";
@@ -21,6 +24,22 @@ final class Log {
     private static final String SEP = "\u001f";
 
     private Log() {
+    }
+
+    /** Commits as git wrote them in {@link #FORMAT}, which {@link #parse(String)} reads back to the same commits. */
+    public static String text(List<Commit> commits) {
+        StringBuilder s = new StringBuilder();
+        for (Commit c : commits) {
+            s.append(c.hash()).append(SEP).append(c.shortHash()).append(SEP).append(c.author()).append(SEP)
+                    .append(c.when().getEpochSecond()).append(SEP).append(String.join(", ", c.refs())).append(SEP)
+                    .append(c.subject()).append('\0');
+        }
+        return s.toString();
+    }
+
+    /** Read commits from their {@link #text}. */
+    public static List<Commit> parse(String text) {
+        return parse(text.getBytes(StandardCharsets.UTF_8));
     }
 
     static List<Commit> parse(byte[] out) {

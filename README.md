@@ -45,8 +45,10 @@ git/                the git executable, run as a process. No GUI; module vex-sui
                     and record() to write its count in git's form beside git's own. Its text crosses as Status's does.
   Diff              one file's diff in hunks and numbered lines. Its text is kept, so it crosses to another part of an
                     application as one string and parse() reads it there. An untracked file's is made here, not by git.
-  Log, Commit       reads `git log -z` in one format: hash, author, time, the refs at it, subject.
-  Refs, Ref         reads `git for-each-ref` over local and remote branches, with upstream and ahead/behind.
+  Log, Commit       reads `git log -z` in one format: hash, author, time, the refs at it, subject. text() writes a
+                    history back in that format and parse() reads it, so it crosses as Status does.
+  Refs, Ref         reads `git for-each-ref` over local and remote branches, with upstream and ahead/behind; its
+                    text() and parse() as Log's.
 
 update/             updating the installed suite from inside one of its applications, through vexelray-installer.
                     No GUI. Blocking.

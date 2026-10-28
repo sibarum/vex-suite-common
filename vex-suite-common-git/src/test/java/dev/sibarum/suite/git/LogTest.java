@@ -45,6 +45,16 @@ class LogTest {
     }
 
     @Test
+    void aHistoryCrossesAsItsTextAndComesBackTheSame() {
+        List<Commit> log = List.of(
+                new Commit("a41c9e2aaaa", "a41c9e2", "James", Instant.ofEpochSecond(1793000000L),
+                        List.of("HEAD", "main", "tag: v1"), "Subject, with a comma"),
+                new Commit("e02f5a8bbbb", "e02f5a8", "A. N. Other", Instant.ofEpochSecond(1L), List.of(), ""));
+        assertEquals(log, Log.parse(Log.text(log)));
+        assertEquals(List.of(), Log.parse(Log.text(List.of())));
+    }
+
+    @Test
     void aDetachedHeadIsJustHead() {
         assertEquals(List.of("HEAD"), Log.refs("HEAD"));
     }
