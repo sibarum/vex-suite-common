@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -24,7 +25,9 @@ import java.util.concurrent.TimeUnit;
  * <p><b>Read-only queries never take a lock.</b> {@code git status} normally refreshes the index as a side effect,
  * which takes {@code index.lock}; run in the background while the user runs git themselves, that is how a
  * {@code git commit} at the prompt comes to fail with "another git process seems to be running".
- * {@code GIT_OPTIONAL_LOCKS=0} turns the refresh off, which is what it exists for. Nothing here ever prompts either.
+ * {@code GIT_OPTIONAL_LOCKS=0} turns the refresh off, which is what it exists for.
+ * Git never prompts at a terminal either; the one thing that may ask anything is a push, through the credential
+ * manager's own window ({@link Push}).
  */
 public final class Git {
 
@@ -81,12 +84,20 @@ public final class Git {
      * {@code stdin} is an empty one.
      */
     public Result run(Path dir, List<String> args, String stdin, Duration timeout) throws IOException {
+        return run(dir, args, stdin, timeout, Map.of());
+    }
+
+    /** As {@link #run(Path, List, String, Duration)}, with {@code env} added to git's environment. */
+    private Result run(Path dir, List<String> args, String stdin, Duration timeout, Map<String, String> env)
+            throws IOException {
         List<String> command = new ArrayList<>(args.size() + 1);
         command.add(executable);
         command.addAll(args);
         ProcessBuilder pb = new ProcessBuilder(command).directory(dir.toFile());
         pb.environment().put("GIT_OPTIONAL_LOCKS", "0");
+        // Git's own prompt only: a credential helper's window, Git Credential Manager's, is still allowed.
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+        pb.environment().putAll(env);
         long start = System.nanoTime();
         Process p = pb.start();
         // Written from a thread of its own, as the pipes are drained: git may fill stdout before it reads its input.
@@ -294,14 +305,93 @@ public final class Git {
     /** How long a commit may take: its hooks may run a linter or the tests. */
     public static final Duration COMMIT_TIMEOUT = Duration.ofMinutes(5);
 
+    /**
+     * Push the branch checked out to where it pushes ({@code git push}, as at a prompt: its upstream, or what
+     * {@code push.default} says). An installed SSH key is preferred, and Git Credential Manager is the fallback
+     * ({@link Push}): the {@link Result} is the last way tried. It may take up to {@link #PUSH_TIMEOUT}, which is long
+     * enough for a person to sign in.
+     */
+    public Result push(Path dir) {
+        return push(dir, Push.identity(Path.of(System.getProperty("user.home"), ".ssh")));
+    }
+
+    /** {@link #push(Path)}, told whether a key is installed. */
+    Result push(Path dir, boolean identity) {
+        Result last = null;
+        for (Push.Way way : Push.ways(pushUrl(dir), identity)) {
+            List<String> args = new ArrayList<>(way.config());
+            args.add("push");
+            last = write(dir, args, null, PUSH_TIMEOUT, way.ssh() ? batchSsh(dir) : Map.of());
+            if (last.ok() || !way.ssh() || !Push.unreachable(last)) {
+                return last;
+            }
+        }
+        return last;
+    }
+
+    /** How long a push may take: the network, the remote's hooks, and a person answering the credential manager. */
+    public static final Duration PUSH_TIMEOUT = Duration.ofMinutes(5);
+
+    /**
+     * Where a push of the branch checked out goes, with any {@code insteadOf} applied; null if it is detached, has no
+     * remote to push to, or git failed.
+     */
+    String pushUrl(Path dir) {
+        try {
+            Result head = run(dir, List.of("symbolic-ref", "-q", "HEAD"));
+            if (!head.ok()) {
+                return null;
+            }
+            Result remote = run(dir, List.of("for-each-ref", "--format=%(push:remotename)", head.text().strip()));
+            String name = remote.ok() ? remote.text().strip() : "";
+            if (name.isEmpty()) {
+                return null;
+            }
+            Result url = run(dir, List.of("remote", "get-url", "--push", name));
+            return url.ok() ? url.text().strip() : null;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Over SSH nothing may prompt, since nobody sees the prompt: {@code BatchMode}, unless the person chose their own
+     * ssh ({@code GIT_SSH_COMMAND}, {@code GIT_SSH}, {@code core.sshCommand}), which is theirs to keep.
+     */
+    private Map<String, String> batchSsh(Path dir) {
+        if (System.getenv("GIT_SSH_COMMAND") != null || System.getenv("GIT_SSH") != null) {
+            return Map.of();
+        }
+        try {
+            if (run(dir, List.of("config", "core.sshCommand")).ok()) {
+                return Map.of();
+            }
+        } catch (IOException | RuntimeException e) {
+            // no config is no choice made
+        }
+        return Map.of("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15");
+    }
+
+    /**
+     * Check out {@code branch} ({@code git switch}), which refuses, and says which files, rather than overwrite a
+     * change not committed. A remote's branch with no local one of its name gets one that tracks it, git's own guess.
+     */
+    public Result switchTo(Path dir, String branch) {
+        return write(dir, List.of("switch", branch));
+    }
+
     private Result write(Path dir, List<String> args) {
         return write(dir, args, null, TIMEOUT);
     }
 
-    /** A write, as a {@link Result} either way: one that could not start is exit -1 with the reason as its error. */
     private Result write(Path dir, List<String> args, String stdin, Duration timeout) {
+        return write(dir, args, stdin, timeout, Map.of());
+    }
+
+    /** A write, as a {@link Result} either way: one that could not start is exit -1 with the reason as its error. */
+    private Result write(Path dir, List<String> args, String stdin, Duration timeout, Map<String, String> env) {
         try {
-            return run(dir, args, stdin, timeout);
+            return run(dir, args, stdin, timeout, env);
         } catch (IOException | RuntimeException e) {
             List<String> command = new ArrayList<>(args.size() + 1);
             command.add(executable);

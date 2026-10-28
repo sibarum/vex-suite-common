@@ -30,12 +30,13 @@ pictures/
 
 git/                the git executable, run as a process. No GUI; module vex-suite-common-git. Blocking: callers run
                     these off the frame loop, on Gui.offload() or as a job.
-  Git               runs git with pipes, never taking a lock or prompting; a run is a Result (command, exit,
-                    output) kept whole for whatever shows the user what git did. A run may be given standard input
+  Git               runs git with pipes, never taking a lock or prompting at a terminal; a run is a Result (command,
+                    exit, output) kept whole for whatever shows the user what git did. A run may be given standard input
                     (a commit's message) and a longer timeout. No git installed is not an error: every query answers
                     nothing, as it does outside a repository. Queries: status, numstat, diff, log, branches, gitDir.
-                    Writes: stage, unstage and commit (its message on standard input, its hooks given
-                    COMMIT_TIMEOUT), each a whole Result; one that cannot start is exit -1, not a throw.
+                    Writes: stage, unstage, commit (its message on standard input, its hooks given
+                    COMMIT_TIMEOUT), push (PUSH_TIMEOUT) and switchTo, each a whole Result; one that cannot start
+                    is exit -1, not a throw.
   Status            a working tree's state: the branch, every path that is not clean, and the two questions a file
                     list asks of it, at(file) and inside(folder). Case-blind where the platform is. Each Change keeps
                     git's two letters, so a commit view can list it as staged(), unstaged() or both. Its text is
@@ -49,6 +50,10 @@ git/                the git executable, run as a process. No GUI; module vex-sui
                     history back in that format and parse() reads it, so it crosses as Status does.
   Refs, Ref         reads `git for-each-ref` over local and remote branches, with upstream and ahead/behind; its
                     text() and parse() as Log's.
+  Push              how a push reaches its remote: an installed key in ~/.ssh first, an HTTPS remote rewritten to
+                    SSH for that one push, with BatchMode so nothing prompts; when SSH cannot reach it, HTTPS, where
+                    Git Credential Manager may open its window to sign in. An SSH remote is tried as it is, then over
+                    HTTPS. Pure, so it is tested without a network.
 
 update/             updating the installed suite from inside one of its applications, through vexelray-installer.
                     No GUI. Blocking.

@@ -273,6 +273,91 @@ class GitTest {
         assertEquals(List.of(), git.branches(fresh));
     }
 
+    @Test
+    void pushesTheBranchToItsUpstreamAndItIsNoLongerAhead() throws IOException {
+        Path origin = bare("origin.git");
+        git("remote", "add", "origin", origin.toString());
+        git("push", "-q", "-u", "origin", "main");
+        commitA("pushed");
+        assertEquals(1, git.status(repo).orElseThrow().branch().ahead());
+        assertEquals(origin.toString(), git.pushUrl(repo));
+        Git.Result r = git.push(repo, true);
+        assertTrue(r.ok(), r.err());
+        assertEquals(List.of("git", "push"), r.command(), "a path is pushed to as it is, key or none");
+        assertEquals(0, git.status(repo).orElseThrow().branch().ahead());
+        assertEquals("pushed", git.log(origin, "main", 1).get(0).subject());
+    }
+
+    @Test
+    void aPushTheRemoteRejectsSaysWhyAndIsNotTriedAnotherWay() throws IOException {
+        Path origin = bare("origin.git");
+        git("remote", "add", "origin", origin.toString());
+        git("push", "-q", "-u", "origin", "main");
+        Path other = dir.resolve("other");
+        assertTrue(git.run(dir, List.of("clone", "-q", origin.toString(), other.toString())).ok());
+        Files.writeString(other.resolve("theirs.txt"), "theirs\n");
+        assertTrue(git.run(other, List.of("add", ".")).ok());
+        assertTrue(git.run(other, List.of("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "theirs"))
+                .ok());
+        assertTrue(git.run(other, List.of("push", "-q")).ok());
+        commitA("mine");
+        Git.Result r = git.push(repo, true);
+        assertFalse(r.ok());
+        assertTrue(r.err().contains("[rejected]"), r.err());
+    }
+
+    @Test
+    void anSshRemoteThatCannotBeReachedIsTriedOverHttps() throws IOException {
+        git("remote", "add", "origin", "git@nowhere.invalid:team/vex.git");
+        git("config", "branch.main.remote", "origin");
+        git("config", "branch.main.merge", "refs/heads/main");
+        Git.Result r = git.push(repo, true);
+        assertFalse(r.ok());
+        assertEquals(List.of("git", "-c", "url.https://nowhere.invalid/.insteadOf=git@nowhere.invalid:", "push"),
+                r.command(), r.err());
+    }
+
+    @Test
+    void switchesBranchAndRefusesRatherThanOverwriteAChange() throws IOException {
+        git("branch", "feature");
+        Git.Result r = git.switchTo(repo, "feature");
+        assertTrue(r.ok(), r.err());
+        assertEquals("feature", git.status(repo).orElseThrow().branch().head());
+        commitA("on feature");
+        Files.writeString(repo.resolve("sub/a.txt"), "not committed\n");
+        Git.Result refused = git.switchTo(repo, "main");
+        assertFalse(refused.ok());
+        assertTrue(refused.err().contains("sub/a.txt"), refused.err());
+        assertEquals("feature", git.status(repo).orElseThrow().branch().head());
+        assertEquals("not committed\n", Files.readString(repo.resolve("sub/a.txt")));
+    }
+
+    @Test
+    void aRemotesBranchIsSwitchedToAsALocalOneThatTracksIt() throws IOException {
+        Path origin = bare("origin.git");
+        git("remote", "add", "origin", origin.toString());
+        git("push", "-q", "origin", "main:shared");
+        git("fetch", "-q", "origin");
+        Git.Result r = git.switchTo(repo, "shared");
+        assertTrue(r.ok(), r.err());
+        Status s = git.status(repo).orElseThrow();
+        assertEquals("shared", s.branch().head());
+        assertEquals("origin/shared", s.branch().upstream());
+    }
+
+    /** Change sub/a.txt and commit it as {@code subject}. */
+    private void commitA(String subject) throws IOException {
+        Files.writeString(repo.resolve("sub/a.txt"), subject + "\n");
+        git("add", "sub/a.txt");
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", subject);
+    }
+
+    private Path bare(String name) throws IOException {
+        Path origin = dir.resolve(name);
+        assertTrue(git.run(dir, List.of("init", "-q", "--bare", "-b", "main", origin.toString())).ok());
+        return origin;
+    }
+
     private void git(String... args) throws IOException {
         Git.Result r = git.run(repo, List.of(args));
         assumeTrue(r.ok(), () -> "git " + String.join(" ", args) + " failed: " + r.err());
