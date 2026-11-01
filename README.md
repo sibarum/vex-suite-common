@@ -5,7 +5,12 @@ at, the image viewer's tree and its parts, the palette they are drawn in, and gi
 [MainFrame](../mainframe) and [VexelRay IDE](../text-editor-vexel-demo), a terminal. A library, not an application; each app
 depends on it, so a change here is a change to all of them.
 
-MainFrame and VexelRay IDE use only `tty/` and exclude `vexelray-codec-image` from it, so neither carries the picture decoder.
+The terminal is a module of its own, `vex-suite-common-tty`, on vexelray-gui-core alone, so MainFrame and VexelRay IDE
+take it without the viewer or the picture decoder.
+
+**On v0.2:** this branch builds against the 0.2 stack. `vex-suite-common` itself (the viewer, and the update notice) is
+out of the build until it is ported with the frame contract (vexelray-framework's ROADMAP, phase 8); the terminal, the
+pseudo-terminal, git and update are in it.
 
 `git/` is a module of its own, `vex-suite-common-git`, which depends on nothing. `vex-suite-common` brings it, so an
 application that takes the library has it as before; VexelRay IDE's `-core`, which builds against no widget, depends on
@@ -76,14 +81,20 @@ update/             updating the installed suite from inside one of its applicat
                     to the front.
 
 tty/                a terminal: a program on a pseudoconsole, its output as a screen, and the screen on a node.
-  ConPty            a child process attached to a Windows pseudoconsole, through kernel32 by the foreign function
-                    API. Output is VT sequences; input is keys as VT/UTF-8. Ends its output stream when the child
-                    exits, which a pseudoconsole on its own never does.
+  Pty               a program on a pseudo-terminal (module vex-suite-common-pty, the JDK alone), started by the
+                    PtyPlatform of the OS module on the class path: ConPty, a child process attached to a Windows
+                    pseudoconsole through kernel32 by the foreign function API, or a Linux pty. Output is VT
+                    sequences; input is keys as VT/UTF-8. Blocking: an application reads one from a source.
+  Utf8Chunks        a program's output as text, chunk by chunk, a character split across two reads put back
+                    together. Also in the pty module, for the source that reads one.
   Terminal          a VT/xterm screen: a grid of cells, a 10 000-line history, and the parser that edits both from
-                    a program's output. Pure, so it is tested without a window.
-  Pump              a program's output read into a Terminal on a thread of its own, from a pseudoconsole or a pipe.
-  TerminalScreen    a Terminal drawn on a node as a cell grid, fitted to the node, with the history scrolled by the
-                    wheel and a drag selecting. Says what a key or a paste sends; sending it is the owner's.
+                    a program's output. Pure, so it is tested without a window. Module vex-suite-common-tty, as the
+                    two below are.
+  TerminalScreen    a widget: a Terminal drawn on a node as a cell grid, fitted to the node, with the history
+                    scrolled by the wheel and a drag selecting. Talks by message, addressed by the widget: hears what
+                    the program wrote (Feed) and the key map's commands on COMMANDS; publishes what goes to the
+                    program (SENT: typing, a paste, the terminal's own answers), its size in cells (FITTED) and the
+                    program's title (TITLED). Starting the program and writing to it are the application's.
   CellArt           box drawing, block elements and braille, drawn as rectangles so a TUI's lines meet.
 
 view/               the viewer and its parts, on vexelray-gui.

@@ -38,3 +38,11 @@ was seen to close the installed Calculator release exe. Still to confirm, with t
   `outcome()` still reads. The suite-wide update is offered from the version after.
 - **Native image.** The `user32` downcalls are declared in this jar's `reachability-metadata.json` (and the shapes are
   `vexelray-os-windows`'s too); check that Show and the close request work in `-Pnative-release`.
+
+## The terminal draws once per feed, not once per frame
+
+On 0.1, `TerminalScreen` was told the picture was stale from the reader thread and drew it once a frame. On v0.2 it is
+fed on the GUI thread by message, one `Feed` per read the application's source makes, and draws on each, because a
+widget has no hook for "this frame's messages are all in": a program writing faster than a frame (`type` of a large
+file) costs one picture per read rather than one per frame. Not measured yet. If it shows, the fix is upstream, a
+widget-library seam run once per frame after its mailboxes drain, rather than a timer here.

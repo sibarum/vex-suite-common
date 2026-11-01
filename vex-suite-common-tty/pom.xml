@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>dev.sibarum</groupId>
+        <artifactId>vex-suite-common-parent</artifactId>
+        <version>0.2.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vex-suite-common-tty</artifactId>
+
+    <name>vex-suite-common-tty</name>
+    <description>
+        A terminal on screen: Terminal, the VT screen a program's output is parsed into, and TerminalScreen, the
+        widget that shows one as a cell grid. What feeds it and where its keys go are the application's, by message;
+        nothing here starts a program or reads one. A widget library on vexelray-gui-core.
+    </description>
+
+    <dependencies>
+        <!-- Gui, Node, the widget library's Seams, Sketch, the glyph layout and the bus: all through -core. -->
+        <dependency>
+            <groupId>dev.vexelray.gui</groupId>
+            <artifactId>vexelray-gui-core</artifactId>
+            <version>${vexelray-gui.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

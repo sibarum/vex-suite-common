@@ -6,14 +6,14 @@
 
     <groupId>dev.sibarum</groupId>
     <artifactId>vex-suite-common-parent</artifactId>
-    <version>0.1.3-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>vex-suite-common-parent</name>
     <description>
-        What the suite's applications share, as modules: vex-suite-common itself (the viewer, the terminal widgets,
-        git, updates), and the pseudo-terminal under the terminal: vex-suite-common-pty, the platform-neutral Pty,
-        with one vex-suite-common-pty-&lt;os&gt; module per operating system.
+        What the suite's applications share, as modules: vex-suite-common itself (the viewer, git, updates), the
+        terminal widget (vex-suite-common-tty), and the pseudo-terminal under it: vex-suite-common-pty, the
+        platform-neutral Pty, with one vex-suite-common-pty-&lt;os&gt; module per operating system.
     </description>
 
     <modules>
@@ -27,8 +27,15 @@
         <module>vex-suite-common-update-windows</module>
         <!-- Git, run as a process. No widget, so a module that must build against none can take it alone. -->
         <module>vex-suite-common-git</module>
-        <!-- The library the applications depend on, under the artifactId they already name. -->
-        <module>vex-suite-common</module>
+        <!-- The terminal: a VT screen and the widget that shows it, which hears what a program wrote and publishes
+             what goes back to it. A widget library on vexelray-gui-core alone, so an application that shows a
+             terminal takes no viewer. -->
+        <module>vex-suite-common-tty</module>
+        <!-- The library the applications depend on, under the artifactId they already name. Out of the v0.2 build
+             until it is ported: its viewer (PictureViewer and its Tiles) is paced by KronoGui, which v0.2 takes from
+             applications, and waits on the frame contract (vexelray-gui's docs/plans/frame-contract.md), as the
+             codec's player does. Ported once, for Vexplore and Pix (vexelray-framework's ROADMAP, phase 8).
+        <module>vex-suite-common</module> -->
     </modules>
 
     <properties>
@@ -36,10 +43,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <vexelray.version>0.1.3-SNAPSHOT</vexelray.version>
-        <vexelray-gui.version>0.1.3-SNAPSHOT</vexelray-gui.version>
+        <vexelray-gui.version>0.2.0-SNAPSHOT</vexelray-gui.version>
         <tactroller.version>1.3-SNAPSHOT</tactroller.version>
-        <atchung.version>1.3-SNAPSHOT</atchung.version>
-        <vexelray-codec.version>0.1.3-SNAPSHOT</vexelray-codec.version>
+        <atchung.version>1.4-SNAPSHOT</atchung.version>
+        <vexelray-codec.version>0.2.0-SNAPSHOT</vexelray-codec.version>
         <supirvast.version>0.2.3-SNAPSHOT</supirvast.version>
         <junit.version>5.11.4</junit.version>
     </properties>
@@ -69,6 +76,11 @@
             <dependency>
                 <groupId>dev.sibarum</groupId>
                 <artifactId>vex-suite-common-update-windows</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.sibarum</groupId>
+                <artifactId>vex-suite-common-tty</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

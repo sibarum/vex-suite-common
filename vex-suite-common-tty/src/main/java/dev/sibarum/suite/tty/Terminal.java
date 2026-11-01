@@ -8,7 +8,8 @@ import java.util.List;
  * A VT/xterm-style screen: a grid of cells, a scrollback, and a parser that turns the byte stream a
  * pseudoconsole produces into edits of both. No knowledge of windows or of where the bytes come from.
  *
- * <p>All public methods are synchronized on this: the reader thread feeds, the render thread looks.
+ * <p>Not thread-safe, and need not be: one thread owns it. Behind a {@link TerminalScreen} that is the GUI thread,
+ * which feeds it what the program wrote and draws it.
  */
 public final class Terminal {
 
@@ -83,25 +84,25 @@ public final class Terminal {
 
     // -- view -------------------------------------------------------------------------------------------------
 
-    public synchronized int cols() { return cols; }
-    public synchronized int rows() { return rows; }
-    public synchronized int scrollbackSize() { return scrollback.size(); }
-    public synchronized int cursorX() { return cx; }
-    public synchronized int cursorY() { return cy; }
-    public synchronized boolean cursorVisible() { return cursorVisible; }
-    public synchronized boolean appCursorKeys() { return appCursor; }
-    public synchronized boolean bracketedPaste() { return bracketedPaste; }
-    public synchronized boolean altScreen() { return alt; }
+    public int cols() { return cols; }
+    public int rows() { return rows; }
+    public int scrollbackSize() { return scrollback.size(); }
+    public int cursorX() { return cx; }
+    public int cursorY() { return cy; }
+    public boolean cursorVisible() { return cursorVisible; }
+    public boolean appCursorKeys() { return appCursor; }
+    public boolean bracketedPaste() { return bracketedPaste; }
+    public boolean altScreen() { return alt; }
 
     /** Line by absolute index: 0 is the oldest scrollback line, scrollbackSize() is the top of the screen. */
-    public synchronized Line lineAt(int index) {
+    public Line lineAt(int index) {
         int sb = scrollback.size();
         if (index < sb) return scrollback.get(index);
         return screen[Math.min(index - sb, rows - 1)];
     }
 
     /** Text between two absolute positions (inclusive), trailing blanks trimmed per line. */
-    public synchronized String text(int r0, int c0, int r1, int c1) {
+    public String text(int r0, int c0, int r1, int c1) {
         if (r0 > r1 || (r0 == r1 && c0 > c1)) {
             int tr = r0, tc = c0;
             r0 = r1; c0 = c1; r1 = tr; c1 = tc;
@@ -126,7 +127,7 @@ public final class Terminal {
 
     // -- input ------------------------------------------------------------------------------------------------
 
-    public synchronized void feed(CharSequence s) {
+    public void feed(CharSequence s) {
         for (int i = 0; i < s.length(); ) {
             int cp = Character.codePointAt(s, i);
             i += Character.charCount(cp);
@@ -134,7 +135,7 @@ public final class Terminal {
         }
     }
 
-    public synchronized void resize(int newCols, int newRows) {
+    public void resize(int newCols, int newRows) {
         if (newCols == cols && newRows == rows) return;
         if (!alt) {
             while (rows > newRows && cy >= newRows) { // keep the cursor's line; the top goes to history
