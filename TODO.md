@@ -11,7 +11,7 @@ ships. Against a fake install record, a fake `update.ps1`, and the real https ma
   the helper.
 
 Nobody has pressed **Update and restart** in a release exe, and nothing has gone through the real `update.ps1` and
-`install.ps1`. When the next versions of Pix and Vexplore are published, start from the previous release installed by
+`install.ps1`. When the next versions of Rasterware and Vexplore are published, start from the previous release installed by
 `vexelray-installer`. Let each application offer the new version itself, press the button by hand, and confirm:
 
 - it closes, the real updater installs the new version, and it opens again on what was open;
@@ -21,19 +21,19 @@ Nobody has pressed **Update and restart** in a release exe, and nothing has gone
 
 ## Updates: the whole suite at once, in the shipped exes
 
-Updating the suite from one application (`SuiteUpdate`, the plan-file script) has been run from Pix built from source,
+Updating the suite from one application (`SuiteUpdate`, the plan-file script) has been run from Rasterware built from source,
 against a fake registry served by `jwebserver`: an open installed Calculator was asked to close, closed, was updated
-by a fake `update.ps1` and opened again, and Pix, which had no update of its own, reported it. A windowless process
+by a fake `update.ps1` and opened again, and Rasterware, which had no update of its own, reported it. A windowless process
 standing in for an application that will not close got **Skip** and **Cancel**, and both did what they say. `WM_CLOSE`
 was seen to close the installed Calculator release exe. Still to confirm, with the next published versions:
 
-- **An application asking about unsaved changes.** Open VexelRay IDE with an unsaved file and update from Pix: VexelRay IDE should ask,
-  Pix should say VexelRay IDE is still open after three seconds, **Show** should bring VexelRay IDE to the front (Windows allows it only
-  while Pix is in the foreground, which it is when the button was just pressed), and answering VexelRay IDE's question should
+- **An application asking about unsaved changes.** Open VexelRay IDE with an unsaved file and update from Rasterware: VexelRay IDE should ask,
+  Rasterware should say VexelRay IDE is still open after three seconds, **Show** should bring VexelRay IDE to the front (Windows allows it only
+  while Rasterware is in the foreground, which it is when the button was just pressed), and answering VexelRay IDE's question should
   let the update go on. Cancelling VexelRay IDE's question and then pressing **Skip** should update the rest.
-- **This application's own close refused.** With Pix being updated too, make its own close ask and say no: the others
-  should still be updated and opened again, and Pix updated whenever it does close, up to fifteen minutes later.
-- **The first suite update comes from the old helper.** Pix and Vexplore 0.1.0 carry the single-application script, so
+- **This application's own close refused.** With Rasterware being updated too, make its own close ask and say no: the others
+  should still be updated and opened again, and Rasterware updated whenever it does close, up to fifteen minutes later.
+- **The first suite update comes from the old helper.** Rasterware and Vexplore 0.1.0 carry the single-application script, so
   updating out of 0.1.0 updates only that application. The result file it writes is a bare exit code, which
   `outcome()` still reads. The suite-wide update is offered from the version after.
 - **Native image.** The `user32` downcalls are declared in this jar's `reachability-metadata.json` (and the shapes are
