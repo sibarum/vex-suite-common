@@ -42,7 +42,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <vexelray.version>0.1.3-SNAPSHOT</vexelray.version>
+        <vexelray.version>0.2.0-SNAPSHOT</vexelray.version>
         <vexelray-gui.version>0.2.0-SNAPSHOT</vexelray-gui.version>
         <tactroller.version>1.3-SNAPSHOT</tactroller.version>
         <atchung.version>1.4-SNAPSHOT</atchung.version>
