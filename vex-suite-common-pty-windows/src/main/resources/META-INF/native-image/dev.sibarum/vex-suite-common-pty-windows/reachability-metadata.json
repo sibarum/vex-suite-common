@@ -1,0 +1,24 @@
+{
+  "comment": [
+    "The foreign downcalls this jar makes, by shape: tty/windows/ConPty's kernel32 calls (CreatePipe; CreatePseudoConsole,",
+    "ResizePseudoConsole, ClosePseudoConsole; InitializeProcThreadAttributeList, UpdateProcThreadAttribute; CreateProcessW;",
+    "ReadFile, WriteFile; CloseHandle; WaitForSingleObject, GetExitCodeProcess, TerminateProcess; SetConsoleCtrlHandler)",
+    "and WindowsPtyPlatform's GetShortPathNameW. Every one is listed, including the shapes other jars happen to register",
+    "too, so a terminal never depends on what else is on the class path."
+  ],
+  "foreign": {
+    "downcalls": [
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "void*", "jint"] },
+      { "returnType": "jint", "parameterTypes": ["jint", "void*", "void*", "jint", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "jint"] },
+      { "returnType": "void", "parameterTypes": ["void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "jint", "jint", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "jint", "jlong", "void*", "jlong", "void*", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "void*", "void*", "jint", "jint", "void*", "void*", "void*", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "jint", "void*", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*"] },
+      { "returnType": "jint", "parameterTypes": ["void*", "void*", "jint"] }
+    ]
+  }
+}
