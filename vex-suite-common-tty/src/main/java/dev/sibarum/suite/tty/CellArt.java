@@ -1,6 +1,6 @@
 package dev.sibarum.suite.tty;
 
-import dev.vexelray.canvas.Color;
+import dev.vexelray.gui.core.style.Paint;
 import dev.vexelray.gui.draw.Sketch;
 
 /**
@@ -24,16 +24,15 @@ public final class CellArt {
         return (cp >= 0x2500 && cp <= 0x259F) || (cp >= 0x2800 && cp <= 0x28FF);
     }
 
-    public static void draw(Sketch s, int cp, float x, float y, float w, float h, int rgb) {
-        Color c = Color.rgb(rgb);
+    public static void draw(Sketch s, int cp, float x, float y, float w, float h, Paint c) {
         if (cp >= 0x2800) braille(s, cp, x, y, w, h, c);
-        else if (cp >= 0x2580) block(s, cp, x, y, w, h, rgb, c);
+        else if (cp >= 0x2580) block(s, cp, x, y, w, h, c);
         else box(s, cp, x, y, w, h, c);
     }
 
     // -- braille ----------------------------------------------------------------------------------------------
 
-    private static void braille(Sketch s, int cp, float x, float y, float w, float h, Color c) {
+    private static void braille(Sketch s, int cp, float x, float y, float w, float h, Paint c) {
         // dot n of the eight, in the order Unicode numbers them: two columns of three, then the bottom row
         final int[] col = {0, 0, 0, 1, 1, 1, 0, 1};
         final int[] row = {0, 1, 2, 0, 1, 2, 3, 3};
@@ -47,13 +46,13 @@ public final class CellArt {
 
     // -- block elements ---------------------------------------------------------------------------------------
 
-    private static void block(Sketch s, int cp, float x, float y, float w, float h, int rgb, Color c) {
+    private static void block(Sketch s, int cp, float x, float y, float w, float h, Paint c) {
         switch (cp) {
             case 0x2580 -> part(s, x, y, w, h, 0, 0, 1, 0.5f, c);
             case 0x2590 -> part(s, x, y, w, h, 0.5f, 0, 0.5f, 1, c);
-            case 0x2591 -> s.fill(x, y, w, h, Color.argb(0x40000000 | rgb));
-            case 0x2592 -> s.fill(x, y, w, h, Color.argb(0x80000000 | rgb));
-            case 0x2593 -> s.fill(x, y, w, h, Color.argb(0xC0000000 | rgb));
+            case 0x2591 -> s.fill(x, y, w, h, c.alpha(0x40 / 255f));
+            case 0x2592 -> s.fill(x, y, w, h, c.alpha(0x80 / 255f));
+            case 0x2593 -> s.fill(x, y, w, h, c.alpha(0xC0 / 255f));
             case 0x2594 -> part(s, x, y, w, h, 0, 0, 1, 1 / 8f, c);
             case 0x2595 -> part(s, x, y, w, h, 7 / 8f, 0, 1 / 8f, 1, c);
             default -> {
@@ -77,7 +76,7 @@ public final class CellArt {
     }
 
     private static void part(Sketch s, float x, float y, float w, float h, float fx, float fy, float fw, float fh,
-                             Color c) {
+                             Paint c) {
         float x0 = Math.round(x + fx * w), y0 = Math.round(y + fy * h);
         float x1 = Math.round(x + (fx + fw) * w), y1 = Math.round(y + (fy + fh) * h);
         s.fill(x0, y0, x1 - x0, y1 - y0, c);
@@ -85,7 +84,7 @@ public final class CellArt {
 
     // -- box drawing ------------------------------------------------------------------------------------------
 
-    private static void box(Sketch s, int cp, float x, float y, float w, float h, Color c) {
+    private static void box(Sketch s, int cp, float x, float y, float w, float h, Paint c) {
         float lt = Math.max(1f, Math.round(w / 10f));
         float ht = Math.max(lt + 1f, Math.round(w / 5f));
         float d = Math.max(2f, lt * 2f); // a double line is two light strokes this far either side of centre

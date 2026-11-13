@@ -42,9 +42,18 @@ class TerminalTest {
     @Test
     void sgrColours() {
         t.feed("\u001b[31mR\u001b[0mN\u001b[38;2;1;2;3mX");
-        assertEquals(Terminal.Palette.xterm(1), t.lineAt(0).fg[0]);
+        assertEquals(1, t.lineAt(0).fg[0], "an ANSI colour is kept as its number, for the screen to draw in its look");
         assertEquals(Terminal.DEFAULT, t.lineAt(0).fg[1]);
-        assertEquals(0x010203, t.lineAt(0).fg[2]);
+        assertEquals(Terminal.RGB | 0x010203, t.lineAt(0).fg[2], "a 24-bit colour is kept as given, marked");
+    }
+
+    @Test
+    void sgrColourNumbersAreKeptAsNamed() {
+        t.feed("\u001b[93;104mA\u001b[38;5;11;48;5;200mB");
+        assertEquals(11, t.lineAt(0).fg[0]);
+        assertEquals(12, t.lineAt(0).bg[0]);
+        assertEquals(11, t.lineAt(0).fg[1], "38;5 below 16 is the same ANSI colour 93 names");
+        assertEquals(200, t.lineAt(0).bg[1]);
     }
 
     @Test

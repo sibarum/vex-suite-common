@@ -13,7 +13,19 @@ import java.util.List;
  */
 public final class Terminal {
 
+    /**
+     * A cell's colour where the program asked for none of its own: the screen's default foreground or background.
+     *
+     * <p>A cell keeps the colour the program <b>named</b>, not the colour it stood for, so that whoever draws the
+     * terminal decides that when it draws ({@link TerminalColors}). It is one of: {@code DEFAULT}; 0 to 255, an xterm
+     * palette number, the sixteen ANSI colours below 16; or {@link #RGB} over {@code 0xRRGGBB}, a 24-bit colour the
+     * program gave in full (SGR 38;2 and 48;2).
+     */
     public static final int DEFAULT = -1;
+
+    /** The bit over {@code 0xRRGGBB} that marks a cell's colour as 24-bit rather than a palette number: see {@link #DEFAULT}. */
+    public static final int RGB = 0x1000000;
+
     public static final int BOLD = 1, DIM = 2, ITALIC = 4, UNDERLINE = 8, INVERSE = 16, STRIKE = 32;
 
     /** What the terminal needs from whoever owns it. */
@@ -336,10 +348,11 @@ public final class Terminal {
                 case 38, 48 -> {
                     int color = DEFAULT;
                     if (i + 1 < np && params[i + 1] == 5 && i + 2 < np) {
-                        color = Palette.xterm(Math.max(params[i + 2], 0));
+                        color = Math.min(Math.max(params[i + 2], 0), 255);
                         i += 2;
                     } else if (i + 1 < np && params[i + 1] == 2 && i + 4 < np) {
-                        color = (clamp8(params[i + 2]) << 16) | (clamp8(params[i + 3]) << 8) | clamp8(params[i + 4]);
+                        color = RGB | (clamp8(params[i + 2]) << 16)
+                                | (clamp8(params[i + 3]) << 8) | clamp8(params[i + 4]);
                         i += 4;
                     } else {
                         i = np; // malformed; drop the rest rather than misread it
@@ -347,10 +360,10 @@ public final class Terminal {
                     if (color != DEFAULT) { if (p == 38) fg = color; else bg = color; }
                 }
                 default -> {
-                    if (p >= 30 && p <= 37) fg = Palette.xterm(p - 30);
-                    else if (p >= 40 && p <= 47) bg = Palette.xterm(p - 40);
-                    else if (p >= 90 && p <= 97) fg = Palette.xterm(p - 90 + 8);
-                    else if (p >= 100 && p <= 107) bg = Palette.xterm(p - 100 + 8);
+                    if (p >= 30 && p <= 37) fg = p - 30;
+                    else if (p >= 40 && p <= 47) bg = p - 40;
+                    else if (p >= 90 && p <= 97) fg = p - 90 + 8;
+                    else if (p >= 100 && p <= 107) bg = p - 100 + 8;
                 }
             }
         }
@@ -529,13 +542,15 @@ public final class Terminal {
     private static int clamp(int v, int size) { return Math.max(0, Math.min(v, size - 1)); }
     private static int clamp8(int v) { return Math.max(0, Math.min(v, 255)); }
 
-    /** The 256-colour palette, with the sixteen standard entries in the Windows Terminal "Campbell" scheme. */
+    /**
+     * The xterm 256-colour palette as {@code 0xRRGGBB}: the 6x6x6 cube and the grey ramp above 16, which a screen draws
+     * the same in every look, and below 16 the Windows Terminal "Campbell" scheme, {@link TerminalColors#CAMPBELL}'s.
+     * A screen draws the sixteen in its own {@link TerminalColors}, not these.
+     */
     public static final class Palette {
         private static final int[] BASE = {
                 0x0C0C0C, 0xC50F1F, 0x13A10E, 0xC19C00, 0x0037DA, 0x881798, 0x3A96DD, 0xCCCCCC,
                 0x767676, 0xE74856, 0x16C60C, 0xF9F1A5, 0x3B78FF, 0xB4009E, 0x61D6D6, 0xF2F2F2};
-
-        public static final int DEFAULT_FG = 0xCCCCCC, DEFAULT_BG = 0x0C0C0C;
 
         public static int xterm(int n) {
             if (n < 16) return BASE[n];

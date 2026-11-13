@@ -88,8 +88,13 @@ tty/                a terminal: a program on a pseudoconsole, its output as a sc
   Utf8Chunks        a program's output as text, chunk by chunk, a character split across two reads put back
                     together. Also in the pty module, for the source that reads one.
   Terminal          a VT/xterm screen: a grid of cells, a 10 000-line history, and the parser that edits both from
-                    a program's output. Pure, so it is tested without a window. Module vex-suite-common-tty, as the
-                    two below are.
+                    a program's output. Pure, so it is tested without a window. A cell keeps the colour a program
+                    named (default, palette number, or 24-bit), not what it stood for. Module vex-suite-common-tty,
+                    as the three below are.
+  TerminalColors    what a screen draws in: the sixteen ANSI colours, the default ground and text, and the
+                    selection, as paints resolved each frame. CAMPBELL (the default, dark) and LIGHT (each of the
+                    sixteen at 4.5:1 on a light ground); following(dark, light) answers per look, so a screen handed
+                    it once recolours what is on it when the look changes, fading with the tree.
   TerminalScreen    a widget: a Terminal drawn on a node as a cell grid, fitted to the node, with the history
                     scrolled by the wheel and a drag selecting. Talks by message, addressed by the widget: hears what
                     the program wrote (Feed) and the key map's commands on COMMANDS; publishes what goes to the

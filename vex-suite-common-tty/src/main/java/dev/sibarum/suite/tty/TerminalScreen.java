@@ -14,6 +14,7 @@ import dev.vexelray.gui.core.input.WheelEvent;
 import dev.vexelray.gui.core.layout.Length;
 import dev.vexelray.gui.core.layout.NodeLayout;
 import dev.vexelray.gui.core.spi.Seams;
+import dev.vexelray.gui.core.style.Paint;
 import dev.vexelray.gui.draw.Sketch;
 import dev.vexelray.text.GlyphLayout;
 import sibarum.atchung.Subscription;
@@ -144,7 +145,23 @@ public final class TerminalScreen {
         }
     }
 
-    private static final Color SELECTION = Color.argb(0xA0264F78);
+    /** What a cell's background resolves to where the node's own shows through: nothing is filled. */
+    private static final int NO_FILL = Terminal.DEFAULT;
+
+    /** The screen's default foreground, as a cell's resolved colour (an inverse cell's background, say). */
+    private static final int DEFAULT_FG = -2;
+
+    /** The screen's default background, as a cell's resolved colour (an inverse cell's foreground). */
+    private static final int DEFAULT_BG = -3;
+
+    /** The 240 xterm colours above the sixteen: the program's, the same in every look. */
+    private static final Paint[] XTERM = new Paint[256];
+
+    static {
+        for (int n = 16; n < 256; n++) {
+            XTERM[n] = Paint.of(Color.rgb(Palette.xterm(n)));
+        }
+    }
 
     /** The grid a terminal has before it is first laid out. */
     private static final int COLS = 80, ROWS = 24;
@@ -163,8 +180,7 @@ public final class TerminalScreen {
     private String name;
     private Subscription commands;
 
-    private int defaultBg = Palette.DEFAULT_BG;
-    private int defaultFg = Palette.DEFAULT_FG;
+    private TerminalColors colors = TerminalColors.CAMPBELL;
     private float px, cw, lineH, ascent;
     /** The node's content area as last laid out. */
     private float boxW, boxH;
@@ -236,7 +252,7 @@ public final class TerminalScreen {
         });
         measure(fontPx);
         this.node = gui.box().role("terminal").width(Length.FILL).height(Length.grow(1)).font(face)
-                .background(Color.rgb(defaultBg));
+                .background(colors.background());
         this.name = "terminal-" + node.id();
         this.commands = gui.mailbox(COMMANDS, address(), c -> c.applyTo(this));
         wire();
@@ -266,15 +282,23 @@ public final class TerminalScreen {
     }
 
     /**
-     * The colours the terminal's default background and foreground stand for, as {@code 0xRRGGBB}: what shows where
-     * a program asked for no colour of its own. The node's background is the first.
+     * Draw the terminal in {@code colors}: its sixteen ANSI colours, its default background and foreground (the node's
+     * background is the first) and its selection's wash. {@link TerminalColors#CAMPBELL} until told otherwise.
+     *
+     * <p>They are paints, resolved every frame in the look the tree is drawn in, and the cells keep the colour a program
+     * named rather than what it stood for. So a set that answers per look ({@link TerminalColors#following}) is handed
+     * once, and a change of look recolours everything already on screen, fading with the tree.
      */
-    public TerminalScreen colors(int background, int foreground) {
-        defaultBg = background;
-        defaultFg = foreground;
-        node.background(Color.rgb(background));
+    public TerminalScreen colors(TerminalColors colors) {
+        this.colors = java.util.Objects.requireNonNull(colors, "colors");
+        node.background(colors.background());
         redraw();
         return this;
+    }
+
+    /** The colours the terminal is drawn in: see {@link #colors(TerminalColors)}. */
+    public TerminalColors colors() {
+        return colors;
     }
 
     /**
@@ -538,7 +562,6 @@ public final class TerminalScreen {
     private void render() {
         stale = false;
         Sketch s = new Sketch();
-        int dBg = defaultBg, dFg = defaultFg;
         int sb = term.scrollbackSize(), rows = term.rows(), cols = term.cols();
         int offset = Math.max(0, Math.min(scrollOffset, sb));
         scrollOffset = offset;
@@ -557,26 +580,26 @@ public final class TerminalScreen {
             }
             // backgrounds, merged into runs
             for (int c = 0; c < w; ) {
-                int bg = cellBg(l, c, cursorRow && c == term.cursorX(), dFg);
+                int bg = cellBg(l, c, cursorRow && c == term.cursorX());
                 int e = c + 1;
-                while (e < w && bg == cellBg(l, e, cursorRow && e == term.cursorX(), dFg)) {
+                while (e < w && bg == cellBg(l, e, cursorRow && e == term.cursorX())) {
                     e++;
                 }
-                if (bg != Terminal.DEFAULT) {
-                    s.fill(c * cw, y, (e - c) * cw, lineH, Color.rgb(bg));
+                if (bg != NO_FILL) {
+                    s.fill(c * cw, y, (e - c) * cw, lineH, paint(bg));
                 }
                 c = e;
             }
             if (selTo >= selFrom) {
-                s.fill(selFrom * cw, y, (Math.min(selTo, cols - 1) - selFrom + 1) * cw, lineH, SELECTION);
+                s.fill(selFrom * cw, y, (Math.min(selTo, cols - 1) - selFrom + 1) * cw, lineH, colors.selection());
             }
             // glyphs, merged into runs of one colour; anything outside Latin-1 is placed on its own cell
             StringBuilder run = new StringBuilder();
             int runStart = 0, runFg = 0, runAt = 0;
             for (int c = 0; c <= w; c++) {
                 int ch = c < w ? l.ch[c] : 0;
-                int fg = c < w ? cellFg(l, c, cursorRow && c == term.cursorX(), dBg, dFg) : 0;
-                int at = c < w ? l.at[c] & (Terminal.BOLD | Terminal.UNDERLINE | Terminal.STRIKE) : 0;
+                int fg = c < w ? cellFg(l, c, cursorRow && c == term.cursorX()) : 0;
+                int at = c < w ? l.at[c] & (Terminal.BOLD | Terminal.DIM | Terminal.UNDERLINE | Terminal.STRIKE) : 0;
                 boolean latin = ch > 0 && ch < 0x100;
                 if (!run.isEmpty() && (!latin || fg != runFg || at != runAt)) {
                     text(s, run.toString(), runStart, y, runFg, runAt);
@@ -590,7 +613,7 @@ public final class TerminalScreen {
                     }
                     run.append((char) ch);
                 } else if (CellArt.handles(ch)) {
-                    CellArt.draw(s, ch, c * cw, y, cw, lineH, fg);
+                    CellArt.draw(s, ch, c * cw, y, cw, lineH, ink(fg, at));
                 } else if (ch > 0) {
                     text(s, new String(Character.toChars(ch)), c, y, fg, at);
                 }
@@ -599,8 +622,8 @@ public final class TerminalScreen {
         node.picture(s.picture());
     }
 
-    private void text(Sketch s, String str, int col, float y, int rgb, int at) {
-        Color color = Color.rgb(rgb);
+    private void text(Sketch s, String str, int col, float y, int fg, int at) {
+        Paint color = ink(fg, at);
         float x = col * cw;
         s.text(str, x, y + ascent, px, color);
         if ((at & Terminal.BOLD) != 0) {
@@ -614,30 +637,50 @@ public final class TerminalScreen {
         }
     }
 
-    /** Resolved background as 0xRRGGBB, or DEFAULT when the node's own background shows through. */
-    private static int cellBg(Line l, int c, boolean cursor, int defaultFg) {
+    /**
+     * The colour a cell's background is filled in, as a cell holds one ({@link Terminal#DEFAULT}'s forms) or
+     * {@link #DEFAULT_FG}; {@link #NO_FILL} where the node's own background shows through.
+     */
+    private static int cellBg(Line l, int c, boolean cursor) {
         boolean inv = ((l.at[c] & Terminal.INVERSE) != 0) ^ cursor;
         if (!inv) {
             return l.bg[c];
         }
-        return l.fg[c] == Terminal.DEFAULT ? defaultFg : l.fg[c];
+        return l.fg[c] == Terminal.DEFAULT ? DEFAULT_FG : l.fg[c];
     }
 
-    private static int cellFg(Line l, int c, boolean cursor, int defaultBg, int defaultFg) {
+    /** The colour a cell's glyph is drawn in, as a cell holds one, or {@link #DEFAULT_FG} or {@link #DEFAULT_BG}. */
+    private static int cellFg(Line l, int c, boolean cursor) {
         boolean inv = ((l.at[c] & Terminal.INVERSE) != 0) ^ cursor;
-        int fg = inv ? (l.bg[c] == Terminal.DEFAULT ? defaultBg : l.bg[c])
-                : (l.fg[c] == Terminal.DEFAULT ? defaultFg : l.fg[c]);
-        if ((l.at[c] & Terminal.DIM) != 0) {
-            fg = blend(fg, defaultBg);
+        if (inv) {
+            return l.bg[c] == Terminal.DEFAULT ? DEFAULT_BG : l.bg[c];
         }
-        return fg;
+        return l.fg[c] == Terminal.DEFAULT ? DEFAULT_FG : l.fg[c];
     }
 
-    private static int blend(int a, int b) {
-        int r = (((a >> 16) & 255) * 6 + ((b >> 16) & 255) * 4) / 10;
-        int g = (((a >> 8) & 255) * 6 + ((b >> 8) & 255) * 4) / 10;
-        int bl = ((a & 255) * 6 + (b & 255) * 4) / 10;
-        return (r << 16) | (g << 8) | bl;
+    /** {@code fg} as a glyph is drawn in it: dimmed toward the default background under {@link Terminal#DIM}. */
+    private Paint ink(int fg, int at) {
+        Paint p = paint(fg);
+        if ((at & Terminal.DIM) == 0) {
+            return p;
+        }
+        TerminalColors.Dimmed dim = new TerminalColors.Dimmed(p, colors.background());
+        // Both fixed, the mix is too: drawn as a colour, with nothing to resolve each frame.
+        return p.fixed() != null && colors.background().fixed() != null ? Paint.of(dim.in(null)) : dim;
+    }
+
+    /** A resolved cell colour as the paint it is drawn in, in this screen's {@link TerminalColors}. */
+    private Paint paint(int color) {
+        if (color == DEFAULT_FG) {
+            return colors.foreground();
+        }
+        if (color == DEFAULT_BG) {
+            return colors.background();
+        }
+        if ((color & Terminal.RGB) != 0) {
+            return Paint.of(Color.rgb(color & 0xFFFFFF));
+        }
+        return color < 16 ? colors.ansi(color) : XTERM[color];
     }
 
     // -- input ------------------------------------------------------------------------------------------------
