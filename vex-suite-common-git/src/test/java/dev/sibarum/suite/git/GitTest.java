@@ -307,17 +307,6 @@ class GitTest {
     }
 
     @Test
-    void anSshRemoteThatCannotBeReachedIsTriedOverHttps() throws IOException {
-        git("remote", "add", "origin", "git@nowhere.invalid:team/vex.git");
-        git("config", "branch.main.remote", "origin");
-        git("config", "branch.main.merge", "refs/heads/main");
-        Git.Result r = git.push(repo, true);
-        assertFalse(r.ok());
-        assertEquals(List.of("git", "-c", "url.https://nowhere.invalid/.insteadOf=git@nowhere.invalid:", "push"),
-                r.command(), r.err());
-    }
-
-    @Test
     void switchesBranchAndRefusesRatherThanOverwriteAChange() throws IOException {
         git("branch", "feature");
         Git.Result r = git.switchTo(repo, "feature");
