@@ -152,5 +152,27 @@
                 <directory>${project.basedir}/target-linux</directory>
             </build>
         </profile>
+
+        <!-- Records what each module's own tests reach, for its META-INF/native-image metadata: run on a GraalVM JDK,
+             mvn -Pnative-trace test, and each module's trace is in target/native-trace/reachability-metadata.json.
+             A trace is evidence, not the file: keep only the entries that name the module's own code (its downcalls
+             and upcalls, its reflection, its resources), never JUnit's or the JDK's. Through the environment rather
+             than argLine, so it composes with the argLine a module sets for itself. -->
+        <profile>
+            <id>native-trace</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <environmentVariables>
+                                <JAVA_TOOL_OPTIONS>-agentlib:native-image-agent=config-output-dir=${project.build.directory}/native-trace</JAVA_TOOL_OPTIONS>
+                            </environmentVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>
